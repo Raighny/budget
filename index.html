@@ -239,18 +239,20 @@
       const teams = filter.department ? DEPT_TEAM_MAP[filter.department] : [].concat(...Object.values(DEPT_TEAM_MAP));
       return (
         <div className="filter-bar">
-          <label>部門:
-            <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
-              <option value="">全部</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </label>
-          <label>Team:
-            <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
-              <option value="">全部</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </label>
+          <div className="filter-group">
+            <label>部門:
+              <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
+                <option value="">全部</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Team:
+              <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
+                <option value="">全部</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
           <label>Type:
             <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}>
               <option value="">全部</option>
@@ -263,18 +265,20 @@
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </label>
-          <label>Year:
-            <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
-              <option value="">全部</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </label>
-          <label>Quarter:
-            <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
-              <option value="">全部</option>
-              {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
-            </select>
-          </label>
+          <div className="filter-group">
+            <label>Year:
+              <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
+                <option value="">全部</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <label>Quarter:
+              <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
+                <option value="">全部</option>
+                {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </label>
+          </div>
           <button type="button" onClick={onReset}>Reset</button>
         </div>
       );
@@ -1011,18 +1015,20 @@
         const teams = filter.department ? DEPT_TEAM_MAP[filter.department] : [].concat(...Object.values(DEPT_TEAM_MAP));
         return (
           <div className="filter-bar">
-            <label>部門:
-              <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
-                <option value="">全部</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </label>
-            <label>Team:
-              <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
-                <option value="">全部</option>
-                {teams.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </label>
+            <div className="filter-group">
+              <label>部門:
+                <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
+                  <option value="">全部</option>
+                  {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+              <label>Team:
+                <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
+                  <option value="">全部</option>
+                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+            </div>
             <label>Type:
               <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}>
                 <option value="">全部</option>
@@ -1035,18 +1041,20 @@
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </label>
-            <label>Year:
-              <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
-                <option value="">全部</option>
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </label>
-            <label>Quarter:
-              <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
-                <option value="">全部</option>
-                {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
-              </select>
-            </label>
+            <div className="filter-group">
+              <label>Year:
+                <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
+                  <option value="">全部</option>
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <label>Quarter:
+                <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
+                  <option value="">全部</option>
+                  {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+                </select>
+              </label>
+            </div>
             <button type="button" onClick={onReset}>Reset</button>
           </div>
         );
