@@ -91,6 +91,14 @@
       return "";
     }
 
+    // 依據匯率表取得幣別兌換成 USD 的比率
+    function getRateToUSD(rates, currency, year, quarter) {
+      if (currency === "USD") return 1;
+      const rateInfo = rates.find(r => r.year == year && r.quarter === quarter);
+      const rate = rateInfo ? Number(rateInfo[currency]) : NaN;
+      return isNaN(rate) || rate <= 0 ? 1 : rate;
+    }
+
     function roleLabel(role) {
       return ROLES.find(r => r.value === role)?.label || role;
     }
