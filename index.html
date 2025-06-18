@@ -8,37 +8,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <style>
-    body { background: #f7f7f7; }
-    button { margin-right: 8px; }
-    table { 
-      background: #fff;
-      width: 100%;
-      table-layout: auto;
-      word-break: break-all;
-    }
-    select, input { margin-right: 8px; }
-    .login-box { max-width: 320px; margin: 80px auto; padding: 32px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; }
-    .filter-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; }
-    .export-btn { float: right; }
-    .table-wrap { 
-      position: relative;
-      overflow-x: auto;
-      max-width: 100%;
-    }
-    .modal-backdrop {
-      position: fixed; left: 0; top: 0; width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.2); z-index: 1000; display: flex; align-items: center; justify-content: center;
-    }
-    .modal-content {
-      background: #fff; padding: 32px 24px; border-radius: 8px; min-width: 260px; text-align: center; box-shadow: 0 2px 16px #0002;
-    }
-    .admin-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; }
-    .notify { color: #d00; font-weight: bold; margin-top: 8px; }
-    .section-tabs { margin-bottom: 16px; }
-    .section-tabs button { margin-right: 8px; }
-    .section-content { margin-bottom: 16px; }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="root"></div>
@@ -170,13 +140,13 @@
         <div className="admin-bar">
           <div className="section-tabs">
             
-            <button onClick={() => setShowAdd(v => !v)} style={{ marginLeft: 8, background: "#e6f0fa", border: "1px solid #b3d4fc" }}>新增帳號</button>
+              <button onClick={() => setShowAdd(v => !v)} className="btn btn-primary ml-2">新增帳號</button>
           </div>
           <div className="section-content">
             {tab === "manage" && (
               <div>
                 {showAdd && (
-                  <form onSubmit={handleAdd} style={{ display: "inline-block", marginBottom: 8 }}>
+                  <form onSubmit={handleAdd} className="inline-form">
                     <input placeholder="名稱" value={name} onChange={e => setName(e.target.value)} />
                     <select value={role} onChange={e => setRole(e.target.value)}>
                       {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -184,10 +154,10 @@
                     <input placeholder="密碼" type="password" value={password} onChange={e => setPassword(e.target.value)} />
                     <button type="submit">送出</button>
                     <button type="button" onClick={() => setShowAdd(false)}>取消</button>
-                    {notify && <span style={{ color: "#d00", marginLeft: 8 }}>{notify}</span>}
+                    {notify && <span className="notify ml-2">{notify}</span>}
                   </form>
                 )}
-                <table border={1} cellPadding={4} style={{ marginTop: 8, background: "#fff" }}>
+                  <table border={1} cellPadding={4} className="table mt-2">
                   <thead>
                     <tr>
                       <th>名稱</th>
@@ -343,11 +313,11 @@
       // 修改這裡：admin和manager都可以編輯
       const isManagerOrAdmin = user.role === "MANAGER" || user.role === "ADMIN";
       return (
-        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+        <section className="panel">
           <h3>匯率管理</h3>
           <div>
             <label>Year:
-              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" style={{width: "80px"}} />
+              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" className="small-input" />
             </label>
             <label>Quarter:
               <select value={quarter} onChange={e => setQuarter(e.target.value)}>
@@ -355,7 +325,7 @@
               </select>
             </label>
           </div>
-          <table border={1} cellPadding={4} style={{marginTop:8, background:"#fff"}}>
+          <table border={1} cellPadding={4} className="table mt-2">
             <thead>
               <tr>
                 <th>Currency</th>
@@ -379,7 +349,7 @@
               ))}
             </tbody>
           </table>
-          {isManagerOrAdmin && <button onClick={handleSave} style={{marginTop:8}}>儲存</button>}
+          {isManagerOrAdmin && <button onClick={handleSave} className="btn btn-primary mt-2">儲存</button>}
         </section>
       );
     }
@@ -817,7 +787,7 @@
           </div>
           <div>
             <label>Year:
-              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" style={{width: "80px"}} />
+              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" className="small-input" />
             </label>
             <label>Quarter:
               <select value={quarter} onChange={e => setQuarter(e.target.value)}>
