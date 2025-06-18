@@ -10,6 +10,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -142,7 +143,7 @@
         <div className="admin-bar">
           <div className="section-tabs">
             
-              <button onClick={() => setShowAdd(v => !v)} className="btn btn-primary ml-2">新增帳號</button>
+              <button onClick={() => setShowAdd(v => !v)} className="btn btn-primary ml-2"><i className="fa fa-plus me-1"></i>Add</button>
           </div>
           <div className="section-content">
             {tab === "manage" && (
@@ -275,7 +276,7 @@
               {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
             </select>
           </label>
-          <button type="button" onClick={onReset}>Reset</button>
+            <button type="button" onClick={onReset}><i className="fa fa-rotate-right me-1"></i>Reset</button>
         </div>
       );
     }
@@ -500,7 +501,7 @@
       }, [data, sort]);
       return (
         <div className="table-wrap">
-          <button className="export-btn" onClick={() => onExport(data, columns, "budget_dashboard.xlsx")}>匯出 Excel</button>
+          <button className="export-btn" onClick={() => onExport(data, columns, "budget_dashboard.xlsx")}><i className="fa fa-download me-1"></i>匯出 Excel</button>
           <table className="table table-striped table-bordered">
             <thead>
               <tr>
@@ -616,8 +617,8 @@
         });
       }, [data, sort]);
       return (
-        <div className="table-wrap">
-          <button className="export-btn" onClick={() => onExport(data, columns.slice(0, -1), "expense_dashboard.xlsx")}>匯出 Excel</button>
+          <div className="table-wrap">
+          <button className="export-btn" onClick={() => onExport(data, columns.slice(0, -1), "expense_dashboard.xlsx")}><i className="fa fa-download me-1"></i>匯出 Excel</button>
           <table className="table table-striped table-bordered">
             <thead>
               <tr>
@@ -1047,7 +1048,7 @@
                 {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
               </select>
             </label>
-            <button type="button" onClick={onReset}>Reset</button>
+            <button type="button" onClick={onReset}><i className="fa fa-rotate-right me-1"></i>Reset</button>
           </div>
         );
       }
@@ -1281,7 +1282,7 @@
                 <label>Applicant:
                   <input value={estimateFilter.applicant} onChange={e => setEstimateFilter(f => ({ ...f, applicant: e.target.value }))} />
                 </label>
-                <button type="button" onClick={() => setEstimateFilter({ currency: "", applicant: "" })}>Reset</button>
+                  <button type="button" onClick={() => setEstimateFilter({ currency: "", applicant: "" })}><i className="fa fa-rotate-right me-1"></i>Reset</button>
               </div>
               {/* 2. 預估區塊預設顯示 Dashboard */}
               <EstimateTab user={user} users={users} estimates={filteredEstimates} setEstimates={setEstimates} defaultTab="dashboard" />
