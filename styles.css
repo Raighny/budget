@@ -90,10 +90,16 @@ input {
   background: #fff;
   padding: var(--space);
   border-radius: 6px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space);
+}
+
+.filter-group {
+  display: flex;
+  gap: var(--space);
+  align-items: center;
 }
 
 .export-btn {
