@@ -15,7 +15,8 @@ body {
   margin: 0;
   padding: var(--space);
   background: #f8f9fa;
-  font-family: "Roboto", "Segoe UI", Tahoma, Arial, sans-serif;
+  /* Use Inter and Noto Sans TC with fallbacks */
+  font-family: "Inter", "Noto Sans TC", "Roboto", "Segoe UI", Tahoma, Arial, sans-serif;
   color: #212529;
 }
 
