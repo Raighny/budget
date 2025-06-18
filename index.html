@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="zh-tw">
+<head>
+  <meta charset="UTF-8" />
+  <title>費用管理CMS 預覽</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { background: #f7f7f7; }
+    button { margin-right: 8px; }
+    table { 
+      background: #fff;
+      width: 100%;
+      table-layout: auto;
+      word-break: break-all;
+    }
+    select, input { margin-right: 8px; }
+    .login-box { max-width: 320px; margin: 80px auto; padding: 32px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; }
+    .filter-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; }
+    .export-btn { float: right; }
+    .table-wrap { 
+      position: relative;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    .modal-backdrop {
+      position: fixed; left: 0; top: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.2); z-index: 1000; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-content {
+      background: #fff; padding: 32px 24px; border-radius: 8px; min-width: 260px; text-align: center; box-shadow: 0 2px 16px #0002;
+    }
+    .admin-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; }
+    .notify { color: #d00; font-weight: bold; margin-top: 8px; }
+    .section-tabs { margin-bottom: 16px; }
+    .section-tabs button { margin-right: 8px; }
+    .section-content { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    // filepath: untitled://untitled/index.html
+    const { useState, useEffect } = React;
+
+    const DEPT_TEAM_MAP = {
+      "ECAD&CS Sec": ["ECAD Team", "Quarter TTL"],
+      "Software PM Dept": ["PM Sec"],
+      "BDS Dept": ["SEO&DA Sec", "Data Science and Analysis Sec.", "資安授權費用"],
+      "Internet Service Development Dept": ["User Experience Sec", "System Development Sec", "F2E Development Sec", "Design Sec", "TD Sec"],
+      "EC Dept": ["ACC", "EC Dept"]
+    };
+    const DEPARTMENTS = Object.keys(DEPT_TEAM_MAP);
+    // 1. Type 選項調整
+    const TYPES = [
+      "1-AOCC - Infra",
+      "2-MKT",
+      "3-Sales"
+    ];
+    const QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
+    const ROLES = [
+      { value: "ADMIN", label: "ADMIN" },
+      { value: "MANAGER", label: "管理師" },
+      { value: "LEADER", label: "Leader" },
+      { value: "USER", label: "USER" }
+    ];
+
+    function formatNumber(n) {
+      return n != null && n !== "" ? Number(n).toLocaleString("en-US") : "";
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      if (isNaN(d)) return "";
+      return d.toISOString().slice(0, 10);
+    }
+
+    function getQuarterFromDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      if (isNaN(d)) return "";
+      const month = d.getMonth() + 1;
+      if (month >= 1 && month <= 3) return "Q1";
+      if (month >= 4 && month <= 6) return "Q2";
+      if (month >= 7 && month <= 9) return "Q3";
+      if (month >= 10 && month <= 12) return "Q4";
+      return "";
+    }
+
+    function roleLabel(role) {
+      return ROLES.find(r => r.value === role)?.label || role;
+    }
+
+    function Login({ users, onLogin }) {
+      const [userId, setUserId] = useState(users[0]?.id || "");
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState("");
+      function handleLogin(e) {
+        e.preventDefault();
+        const user = users.find(u => u.id === userId);
+        if (!user) {
+          setError("請選擇使用者");
+          return;
+        }
+        if (user.password !== password) {
+          setError("密碼錯誤");
+          return;
+        }
+        setError("");
+        onLogin(user);
+      }
+      return (
+        <div className="login-box">
+          <h2>登入</h2>
+          <form onSubmit={handleLogin}>
+            <div>
+              <label>使用者：
+                <select value={userId} onChange={e => setUserId(Number(e.target.value))}>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>)}
+                </select>
+              </label>
+            </div>
+            <div>
+              <label>密碼：
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+              </label>
+            </div>
+            <button type="submit">登入</button>
+            {error && <div style={{ color: "#d00", marginTop: 8 }}>{error}</div>}
+          </form>
+        </div>
+      );
+    }
+
+    function AdminBar({ users, onAddUser, currentUser, onChangeRole, onChangePassword }) {
+      const [tab, setTab] = useState("manage");
+      const [showAdd, setShowAdd] = useState(false);
+      const [name, setName] = useState("");
+      const [role, setRole] = useState("USER");
+      const [password, setPassword] = useState("");
+      const [notify, setNotify] = useState("");
+      // 新增: 刪除帳號
+      function handleDeleteUser(uid) {
+        if (window.confirm("確定要刪除此帳號？")) {
+          onAddUser(prev => prev.filter(u => u.id !== uid));
+        }
+      }
+      function handleAdd(e) {
+        e.preventDefault();
+        if (!name || !role || !password) return;
+        if (users.some(u => u.name === name)) {
+          setNotify("名稱重複");
+          return;
+        }
+        onAddUser({ id: Date.now(), name, role, password });
+        setName(""); setRole("USER"); setPassword(""); setShowAdd(false); setNotify("");
+      }
+      function handleRoleChange(uid, newRole) {
+        onChangeRole(uid, newRole);
+      }
+      function handlePasswordChange(uid) {
+        const newPwd = prompt("請輸入新密碼");
+        if (newPwd) onChangePassword(uid, newPwd);
+      }
+      return (
+        <div className="admin-bar">
+          <div className="section-tabs">
+            
+            <button onClick={() => setShowAdd(v => !v)} style={{ marginLeft: 8, background: "#e6f0fa", border: "1px solid #b3d4fc" }}>新增帳號</button>
+          </div>
+          <div className="section-content">
+            {tab === "manage" && (
+              <div>
+                {showAdd && (
+                  <form onSubmit={handleAdd} style={{ display: "inline-block", marginBottom: 8 }}>
+                    <input placeholder="名稱" value={name} onChange={e => setName(e.target.value)} />
+                    <select value={role} onChange={e => setRole(e.target.value)}>
+                      {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    </select>
+                    <input placeholder="密碼" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+                    <button type="submit">送出</button>
+                    <button type="button" onClick={() => setShowAdd(false)}>取消</button>
+                    {notify && <span style={{ color: "#d00", marginLeft: 8 }}>{notify}</span>}
+                  </form>
+                )}
+                <table border={1} cellPadding={4} style={{ marginTop: 8, background: "#fff" }}>
+                  <thead>
+                    <tr>
+                      <th>名稱</th>
+                      <th>角色</th>
+                      <th>操作</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id}>
+                        <td>{u.name}</td>
+                        <td>
+                          {currentUser.role === "ADMIN" && currentUser.id !== u.id ? (
+                            <select value={u.role} onChange={e => onChangeRole(u.id, e.target.value)}>
+                              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                            </select>
+                          ) : roleLabel(u.role)}
+                        </td>
+                        <td>
+                          {currentUser.role === "ADMIN" && (
+                            <button type="button" onClick={() => handlePasswordChange(u.id)}>變更密碼</button>
+                          )}
+                          {u.id === currentUser.id ? <span>自己</span> : ""}
+                        </td>
+                        <td>
+                          {currentUser.role === "ADMIN" && u.id !== currentUser.id && (
+                            <button
+                              style={{
+                                background: "#fff0f0",
+                                color: "#d00",
+                                border: "1px solid #d00",
+                                borderRadius: 4,
+                                padding: "2px 10px",
+                                fontWeight: "bold"
+                              }}
+                              onClick={() => handleDeleteUser(u.id)}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function FilterBarTab({ filter, setFilter, users, onReset, years }) {
+      const [tab, setTab] = useState("filter");
+      return (
+        <div className="admin-bar">
+          <div className="section-tabs">
+            <button onClick={() => setTab("filter")} style={{ fontWeight: tab === "filter" ? "bold" : undefined }}>Filter</button>
+          </div>
+          <div className="section-content">
+            {tab === "filter" && (
+              <DashboardFilter
+                filter={filter}
+                setFilter={setFilter}
+                users={users}
+                onReset={onReset}
+                years={years}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function DashboardFilter({ filter, setFilter, users, onReset, years }) {
+      const teams = filter.department ? DEPT_TEAM_MAP[filter.department] : [].concat(...Object.values(DEPT_TEAM_MAP));
+      return (
+        <div className="filter-bar">
+          <label>部門:
+            <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
+              <option value="">全部</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+          <label>Team:
+            <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
+              <option value="">全部</option>
+              {teams.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Type:
+            <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}>
+              <option value="">全部</option>
+              {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>PIC:
+            <select value={filter.pic} onChange={e => setFilter(f => ({ ...f, pic: e.target.value }))}>
+              <option value="">全部</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </label>
+          <label>Year:
+            <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
+              <option value="">全部</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </label>
+          <label>Quarter:
+            <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
+              <option value="">全部</option>
+              {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={onReset}>Reset</button>
+        </div>
+      );
+    }
+
+    function Modal({ open, onClose, children }) {
+      if (!open) return null;
+      return (
+        <div className="modal-backdrop" onClick={onClose}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            {children}
+            <div style={{marginTop: 16}}>
+              <button onClick={onClose}>關閉</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 幣別
+    const CURRENCIES = ["EUR", "TWD", "USD", "CNY"];
+
+    // 匯率區塊
+    function ExchangeRateTab({ user, rates, setRates }) {
+      const [year, setYear] = useState(new Date().getFullYear());
+      const [quarter, setQuarter] = useState("Q1");
+      const [editRates, setEditRates] = useState({});
+      useEffect(() => {
+        const found = rates.find(r => r.year == year && r.quarter === quarter);
+        setEditRates(found ? { ...found } : { year, quarter, EUR: "", TWD: "", USD: "", CNY: "" });
+      }, [year, quarter, rates]);
+      function handleSave() {
+        setRates(prev => {
+          const others = prev.filter(r => !(r.year == year && r.quarter === quarter));
+          return [...others, { ...editRates }];
+        });
+      }
+      // 修改這裡：admin和manager都可以編輯
+      const isManagerOrAdmin = user.role === "MANAGER" || user.role === "ADMIN";
+      return (
+        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+          <h3>匯率管理</h3>
+          <div>
+            <label>Year:
+              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" style={{width: "80px"}} />
+            </label>
+            <label>Quarter:
+              <select value={quarter} onChange={e => setQuarter(e.target.value)}>
+                {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </label>
+          </div>
+          <table border={1} cellPadding={4} style={{marginTop:8, background:"#fff"}}>
+            <thead>
+              <tr>
+                <th>Currency</th>
+                <th>Rate (to USD)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CURRENCIES.map(cur => (
+                <tr key={cur}>
+                  <td>{cur}</td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={editRates[cur] || ""}
+                      onChange={e => setEditRates(r => ({ ...r, [cur]: e.target.value }))}
+                      disabled={!isManagerOrAdmin}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {isManagerOrAdmin && <button onClick={handleSave} style={{marginTop:8}}>儲存</button>}
+        </section>
+      );
+    }
+
+    // 預算 Add PIC 多選
+    function BudgetAddForm({ user, users, onAdd, onSuccess, canEdit }) {
+      const [department, setDepartment] = useState("");
+      const [team, setTeam] = useState("");
+      const [item, setItem] = useState("");
+      const [description, setDescription] = useState("");
+      const [type, setType] = useState("");
+      // PIC 多選
+      const [pics, setPics] = useState([user.id]);
+      const [startDay, setStartDay] = useState("");
+      const [endDay, setEndDay] = useState("");
+      const [amount, setAmount] = useState("");
+      const teams = department ? DEPT_TEAM_MAP[department] : [];
+      useEffect(() => { setTeam(""); }, [department]);
+      if (!canEdit) return <div style={{color:"#d00"}}>您沒有新增預算權限</div>;
+      return (
+        <form onSubmit={e => {
+          e.preventDefault();
+          if (!department || !team || !item || !type || !pics.length || !startDay || !endDay || !amount) return;
+          const year = startDay ? new Date(startDay).getFullYear() : "";
+          onAdd({
+            department, team, item, description, type, pics, // <-- 多個 PIC
+            year, startDay, endDay, amount: Number(amount)
+          });
+          setDepartment(""); setTeam(""); setItem(""); setDescription(""); setType(""); setPics([user.id]);
+          setStartDay(""); setEndDay(""); setAmount("");
+          onSuccess && onSuccess();
+        }}>
+          <div>
+            <label>部門:
+              <select value={department} onChange={e => setDepartment(e.target.value)}>
+                <option value="">請選擇</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Team:
+              <select value={team} onChange={e => setTeam(e.target.value)} disabled={!department}>
+                <option value="">請選擇</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Item: <input value={item} onChange={e => setItem(e.target.value)} /></label>
+            <label>Description: <input value={description} onChange={e => setDescription(e.target.value)} /></label>
+          </div>
+          <div>
+            <label>Type:
+              <select value={type} onChange={e => setType(e.target.value)}>
+                <option value="">請選擇</option>
+                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>PIC:
+              {pics.map((picId, idx) => (
+                <span key={idx} style={{marginRight:4}}>
+                  <select
+                    value={picId}
+                    onChange={e => setPics(ps => ps.map((p, i) => i === idx ? Number(e.target.value) : p))}
+                  >
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  {pics.length > 1 && <button type="button" onClick={() => setPics(ps => ps.filter((_, i) => i !== idx))}>-</button>}
+                </span>
+              ))}
+              <button type="button" onClick={() => setPics(ps => [...ps, user.id])}>+</button>
+            </label>
+          </div>
+          <div>
+            <label>Start Day:
+              <input type="date" value={startDay} onChange={e => setStartDay(e.target.value)} />
+            </label>
+            <label>End Day:
+              <input type="date" value={endDay} onChange={e => setEndDay(e.target.value)} />
+            </label>
+            <label>Amount: <input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></label>
+          </div>
+          <button type="submit">新增預算</button>
+        </form>
+      );
+    }
+
+    // 預算Dashboard計算已使用金額(轉USD)
+    function getBudgetUsage(budgetId, expenses, budgets, rates) {
+      const budget = budgets.find(b => b.id === budgetId);
+      if (!budget) return { used: 0, percent: 0, remain: budget?.amount || 0 };
+      const year = budget.year;
+      const quarter = getQuarterFromDate(budget.startDay);
+      // 將所有請款金額轉換為USD
+      const used = expenses
+        .filter(e => e.budgetId === budgetId)
+        .reduce((sum, e) => {
+          const rate = getRateToUSD(rates, e.currency, year, quarter);
+          return sum + (Number(e.amount) * (e.currency === "USD" ? 1 : rate));
+        }, 0);
+      const percent = budget.amount ? (used / budget.amount) * 100 : 0;
+      const remain = budget.amount - used;
+      return { used, percent, remain };
+    }
+
+    // BudgetDashboardTable 預算Dashboard顯示USD、已使用金額轉USD
+    function BudgetDashboardTable({ data, users, onExport }) {
+      // 新增排序狀態
+      const [sort, setSort] = React.useState({ key: null, order: "asc" });
+      const totalAmount = data.reduce((sum, b) => sum + Number(b.amount), 0);
+      const totalUsed = data.reduce((sum, b) => sum + Number(b.used), 0);
+      const totalRemain = data.reduce((sum, b) => sum + Number(b.remain), 0);
+      const columns = [
+        { title: "部門", dataIndex: "department" },
+        { title: "Team", dataIndex: "team" },
+        { title: "Item", dataIndex: "item" },
+        { title: "Description", dataIndex: "description" },
+        { title: "Type", dataIndex: "type" },
+        { title: "PIC", dataIndex: "picName" },
+        { title: "Year", dataIndex: "year" },
+        { title: "Quarter", dataIndex: "quarter" },
+        { title: "總金額(USD)", dataIndex: "amount" },
+        { title: "已使用(USD)", dataIndex: "used" },
+        { title: "剩餘(USD)", dataIndex: "remain" },
+        { title: "使用%", dataIndex: "percent" }
+      ];
+      // 排序函式
+      function handleSort(key) {
+        setSort(s => ({
+          key,
+          order: s.key === key && s.order === "asc" ? "desc" : "asc"
+        }));
+      }
+      // 排序資料
+      const sortedData = React.useMemo(() => {
+        if (!sort.key) return data;
+        return [...data].sort((a, b) => {
+          let va = a[sort.key], vb = b[sort.key];
+          // 數字排序
+          if (!isNaN(Number(va)) && !isNaN(Number(vb))) {
+            va = Number(va); vb = Number(vb);
+          }
+          if (va < vb) return sort.order === "asc" ? -1 : 1;
+          if (va > vb) return sort.order === "asc" ? 1 : -1;
+          return 0;
+        });
+      }, [data, sort]);
+      return (
+        <div className="table-wrap">
+          <button className="export-btn" onClick={() => onExport(data, columns, "budget_dashboard.xlsx")}>匯出 Excel</button>
+          <table width="100%" border={1} cellPadding={4}>
+            <thead>
+              <tr>
+                {columns.map(col => (
+                  <th key={col.dataIndex}>
+                    {col.title}
+                    <button
+                      style={{ marginLeft: 2, fontSize: 10, padding: "0 2px" }}
+                      onClick={() => handleSort(col.dataIndex)}
+                      type="button"
+                      tabIndex={-1}
+                      title="排序"
+                    >
+                      {sort.key === col.dataIndex
+                        ? (sort.order === "asc" ? "▲" : "▼")
+                        : "▲▼"}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedData.map((b, idx) => (
+                <tr key={b.id || idx}>
+                  <td>{b.department}</td>
+                  <td>{b.team}</td>
+                  <td>{b.item}</td>
+                  <td>{b.description}</td>
+                  <td>{b.type}</td>
+                  <td>
+                    {Array.isArray(b.pics)
+                      ? b.pics.map(pid => users.find(u => u.id === pid)?.name).filter(Boolean).join(", ")
+                      : users.find(u => u.id === b.pic)?.name || ""}
+                  </td>
+                  <td>{b.year}</td>
+                  <td>{getQuarterFromDate(b.startDay)}</td>
+                  <td>{formatNumber(b.amount)}</td>
+                  <td>{formatNumber(b.used)}</td>
+                  <td>{formatNumber(b.remain)}</td>
+                  <td>{b.percent}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={8} style={{ textAlign: "right" }}>Total</td>
+                <td>{formatNumber(totalAmount)}</td>
+                <td>{formatNumber(totalUsed)}</td>
+                <td>{formatNumber(totalRemain)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      );
+    }
+
+    // ExpenseDashboardTable 請款Dashboard No.為第一欄且不可編輯
+    function ExpenseDashboardTable({ data, users, budgets, onExport, onEdit }) {
+      // 新增排序狀態
+      const [sort, setSort] = React.useState({ key: null, order: "asc" });
+      const totalAmount = data.reduce((sum, e) => sum + Number(e.amount), 0);
+      const columns = [
+        { title: "No.", dataIndex: "unitId" },
+        { title: "預算Item", dataIndex: "item" },
+        { title: "部門", dataIndex: "department" },
+        { title: "Team", dataIndex: "team" },
+        { title: "Type", dataIndex: "type" },
+        { title: "PIC", dataIndex: "picName" },
+        { title: "Year", dataIndex: "year" },
+        { title: "Quarter", dataIndex: "quarter" },
+        { title: "Apply Date", dataIndex: "applyDate" },
+        { title: "Description", dataIndex: "description" },
+        { title: "廠商", dataIndex: "vendor" },
+        { title: "Payment Type", dataIndex: "paymentType" },
+        { title: "Invoice Date", dataIndex: "invoiceDate" },
+        { title: "Invoice Number", dataIndex: "invoiceNumber" },
+        { title: "幣別", dataIndex: "currency" },
+        { title: "原幣金額", dataIndex: "originalAmount" },
+        { title: "MPOR ID", dataIndex: "mporId" },
+        { title: "Batch Number", dataIndex: "batchNumber" },
+        { title: "IA Form No", dataIndex: "iaFormNo" },
+        { title: "Payment Date", dataIndex: "paymentDate" },
+        { title: "Status", dataIndex: "status" },
+        { title: "PE單號", dataIndex: "peNumbers" },
+        { title: "PE Status", dataIndex: "peStatus" },
+        { title: "Applied Expenses", dataIndex: "appliedExpenses" },
+        { title: "In Process", dataIndex: "inProcess" },
+        { title: "Paid", dataIndex: "paid" },
+        { title: "Balance", dataIndex: "balance" },
+        { title: "金額(USD)", dataIndex: "amount" },
+        { title: "EDIT", dataIndex: "edit" }
+      ];
+      // 排序函式
+      function handleSort(key) {
+        setSort(s => ({
+          key,
+          order: s.key === key && s.order === "asc" ? "desc" : "asc"
+        }));
+      }
+      // 排序資料
+      const sortedData = React.useMemo(() => {
+        if (!sort.key) return data;
+        return [...data].sort((a, b) => {
+          let va = a[sort.key], vb = b[sort.key];
+          // 數字排序
+          if (!isNaN(Number(va)) && !isNaN(Number(vb))) {
+            va = Number(va); vb = Number(vb);
+          }
+          if (va < vb) return sort.order === "asc" ? -1 : 1;
+          if (va > vb) return sort.order === "asc" ? 1 : -1;
+          return 0;
+        });
+      }, [data, sort]);
+      return (
+        <div className="table-wrap">
+          <button className="export-btn" onClick={() => onExport(data, columns.slice(0, -1), "expense_dashboard.xlsx")}>匯出 Excel</button>
+          <table width="100%" border={1} cellPadding={4}>
+            <thead>
+              <tr>
+                {columns.map(col => (
+                  <th key={col.dataIndex}>
+                    {col.title}
+                    <button
+                      style={{ marginLeft: 2, fontSize: 10, padding: "0 2px" }}
+                      onClick={() => handleSort(col.dataIndex)}
+                      type="button"
+                      tabIndex={-1}
+                      title="排序"
+                    >
+                      {sort.key === col.dataIndex
+                        ? (sort.order === "asc" ? "▲" : "▼")
+                        : "▲▼"}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedData.map((e, idx) => (
+                <tr key={e.id || idx}>
+                  <td>{e.unitId}</td>
+                  <td>{e.item}</td>
+                  <td>{e.department}</td>
+                  <td>{e.team}</td>
+                  <td>{e.type}</td>
+                  <td>{users.find(u => u.id === e.pic)?.name || ""}</td>
+                  <td>{e.year}</td>
+                  <td>{e.quarter}</td>
+                  <td>{formatDate(e.applyDate)}</td>
+                  <td>{e.description}</td>
+                  <td>{e.vendor}</td>
+                  <td>{e.paymentType}</td>
+                  <td>{formatDate(e.invoiceDate)}</td>
+                  <td>{e.invoiceNumber}</td>
+                  <td>{e.currency}</td>
+                  <td>{formatNumber(e.originalAmount)}</td>
+                  <td>{e.mporId}</td>
+                  <td>{e.batchNumber}</td>
+                  <td>{e.iaFormNo}</td>
+                  <td>{formatDate(e.paymentDate)}</td>
+                  <td>{e.status}</td>
+                  <td>{Array.isArray(e.peNumbers) ? e.peNumbers.join(",") : e.peNumbers}</td>
+                  <td>{e.peStatus}</td>
+                  <td>{formatNumber(e.appliedExpenses)}</td>
+                  <td>{formatNumber(e.inProcess)}</td>
+                  <td>{formatNumber(e.paid)}</td>
+                  <td>{formatNumber(e.balance)}</td>
+                  <td>{formatNumber(e.amount)}</td>
+                  <td>
+                    <button onClick={() => onEdit && onEdit(e)}>Edit</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={columns.length-1} style={{ textAlign: "right" }}>Total</td>
+                <td>{formatNumber(totalAmount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      );
+    }
+
+    // ExpenseAddForm 請款新增表單（修正 item is not defined 錯誤）
+    function ExpenseAddForm({ user, users, budgets, onAdd, onSuccess, canEdit, notifyManager, rates, expenses }) {
+      const [department, setDepartment] = useState("");
+      const [team, setTeam] = useState("");
+      const [type, setType] = useState("");
+      const [quarter, setQuarter] = useState("");
+      const [year, setYear] = useState(new Date().getFullYear());
+      const [budgetId, setBudgetId] = useState("");
+      const [description, setDescription] = useState("");
+      const [pic, setPic] = useState(user.id);
+      const [amount, setAmount] = useState("");
+      const [applyDate, setApplyDate] = useState("");
+      const [notify, setNotify] = useState("");
+      const [vendor, setVendor] = useState("");
+      const [paymentType, setPaymentType] = useState("");
+      const [invoiceDate, setInvoiceDate] = useState("");
+      const [invoiceNumber, setInvoiceNumber] = useState("");
+      const [currency, setCurrency] = useState("USD");
+      const teams = department ? DEPT_TEAM_MAP[department] : [];
+      // 累積ID
+      const nextNo = (expenses && expenses.length > 0)
+        ? Math.max(...expenses.map(e => Number(e.unitId) || 0), 0) + 1
+        : 1;
+
+      // 預算Item過濾邏輯
+      const filteredBudgets = budgets.filter(b =>
+        (!department || b.department === department) &&
+        (!team || b.team === team) &&
+        (!type || b.type === type) &&
+        (!quarter || getQuarterFromDate(b.startDay) === quarter) &&
+        (!year || b.year == year)
+      );
+      const selectedBudget = budgets.find(b => b.id === budgetId);
+
+      // 修正：移除 item 相關的 input 欄位與狀態
+      // useEffect(() => { setTeam(""); }, [department]);
+      useEffect(() => { setTeam(""); }, [department]);
+      useEffect(() => { setBudgetId(filteredBudgets[0]?.id || ""); }, [department, team, type, quarter, year, budgets.length]);
+      useEffect(() => {
+        const budget = budgets.find(b => b.id === budgetId);
+        if (budget && budget.item) {
+          setDescription(budget.item);
+        } else {
+          setDescription("");
+        }
+      }, [budgetId, budgets]);
+
+      if (!canEdit) return <div style={{color:"#d00"}}>您沒有新增請款權限</div>;
+      return (
+        <form onSubmit={e => {
+          e.preventDefault();
+          if (!budgetId || !pic || !amount || !applyDate) return;
+          // 幣別轉USD
+          const rate = getRateToUSD(rates, currency, year, quarter || getQuarterFromDate(selectedBudget?.startDay));
+          const usdAmount = Number(amount) / rate;
+          const unitId = nextNo;
+          onAdd({
+            budgetId,
+            description: selectedBudget?.item || "",
+            pic,
+            amount: usdAmount, // 寫入USD
+            applyDate,
+            unitId,
+            vendor, paymentType, invoiceDate, invoiceNumber, currency,
+            originalAmount: amount, // 原始金額
+            originalCurrency: currency,
+            rateUsed: rate
+          });
+          setDescription(""); setPic(user.id); setAmount(""); setApplyDate("");
+          setVendor(""); setPaymentType(""); setInvoiceDate(""); setInvoiceNumber(""); setCurrency("USD");
+          if (notifyManager) setNotify("已通知管理師");
+          onSuccess && onSuccess();
+        }}>
+          <div>
+            <label>部門:
+              <select value={department} onChange={e => setDepartment(e.target.value)}>
+                <option value="">請選擇</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Team:
+              <select value={team} onChange={e => setTeam(e.target.value)} disabled={!department}>
+                <option value="">請選擇</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Type:
+              <select value={type} onChange={e => setType(e.target.value)}>
+                <option value="">請選擇</option>
+                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>PIC:
+              <select value={pic} onChange={e => setPic(Number(e.target.value))}>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Year:
+              <input type="number" value={year} onChange={e => setYear(e.target.value)} min="2000" max="2100" style={{width: "80px"}} />
+            </label>
+            <label>Quarter:
+              <select value={quarter} onChange={e => setQuarter(e.target.value)}>
+                <option value="">請選擇</option>
+                {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Apply Date: <input type="date" value={applyDate} onChange={e => setApplyDate(e.target.value)} /></label>
+            <label>Description: <input value={description} onChange={e => setDescription(e.target.value)} /></label>
+          </div>
+          <div>
+            <label>廠商:
+              <input value={vendor} onChange={e => setVendor(e.target.value)} />
+            </label>
+            <label>Payment Type:
+              <select value={paymentType} onChange={e => setPaymentType(e.target.value)}>
+                <option value="">請選擇</option>
+                <option value="T/T">T/T</option>
+                <option value="Prepayment">Prepayment</option>
+                <option value="Write-off Prepayment">Write-off Prepayment</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Invoice Date:
+              <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+            </label>
+            <label>Invoice Number:
+              <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
+            </label>
+          </div>
+          <button type="submit">新增請款</button>
+        </form>
+      );
+    }
+
+    // ExpenseEditForm 請款編輯表單（No.不可編輯）
+    function ExpenseEditForm({ open, expense, users, budgets, onSave, onClose }) {
+      const [form, setForm] = useState({ ...expense });
+      useEffect(() => {
+        setForm({ ...expense });
+      }, [expense]);
+      if (!open) return null;
+      const budgetOptions = budgets || [];
+      return (
+        <Modal open={open} onClose={onClose}>
+          <h3>編輯請款</h3>
+          <form onSubmit={e => {
+            e.preventDefault();
+            onSave(form);
+            onClose();
+          }}>
+            <div>
+              <label>No. <input value={form.unitId || ""} disabled style={{width: 60}} /></label>
+              <label>預算Item:
+                <select value={form.budgetId} onChange={e => setForm(f => ({...f, budgetId: Number(e.target.value)}))}>
+                  {budgetOptions.map(b => (
+                    <option key={b.id} value={b.id}>{b.item}</option>
+                  ))}
+                </select>
+              </label>
+              <label>PIC:
+                <select value={form.pic} onChange={e => setForm(f => ({...f, pic: Number(e.target.value)}))}>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </label>
+              <label>金額(USD): <input type="number" value={form.amount || ""} onChange={e => setForm(f => ({...f, amount: e.target.value}))} /></label>
+              <label>幣別:
+                <select value={form.currency} onChange={e => setForm(f => ({...f, currency: e.target.value}))}>
+                  {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+                </select>
+              </label>
+              <label>原幣金額: <input type="number" value={form.originalAmount || ""} onChange={e => setForm(f => ({...f, originalAmount: e.target.value}))} /></label>
+            </div>
+            <div>
+              <label>Apply Date: <input type="date" value={form.applyDate || ""} onChange={e => setForm(f => ({...f, applyDate: e.target.value}))} /></label>
+              <label>Description: <input value={form.description || ""} onChange={e => setForm(f => ({...f, description: e.target.value}))} /></label>
+            </div>
+            <div>
+              <label>廠商: <input value={form.vendor || ""} onChange={e => setForm(f => ({...f, vendor: e.target.value}))} /></label>
+              <label>Payment Type:
+                <select value={form.paymentType || ""} onChange={e => setForm(f => ({...f, paymentType: e.target.value}))}>
+                  <option value="">請選擇</option>
+                  <option value="T/T">T/T</option>
+                  <option value="Prepayment">Prepayment</option>
+                  <option value="Write-off Prepayment">Write-off Prepayment</option>
+                </select>
+              </label>
+            </div>
+            <div>
+              <label>Invoice Date: <input type="date" value={form.invoiceDate || ""} onChange={e => setForm(f => ({...f, invoiceDate: e.target.value}))} /></label>
+              <label>Invoice Number: <input value={form.invoiceNumber || ""} onChange={e => setForm(f => ({...f, invoiceNumber: e.target.value}))} /></label>
+            </div>
+            <div>
+              <label>MPOR ID: <input value={form.mporId || ""} onChange={e => setForm(f => ({...f, mporId: e.target.value}))} /></label>
+              <label>Batch Number: <input value={form.batchNumber || ""} onChange={e => setForm(f => ({...f, batchNumber: e.target.value}))} /></label>
+              <label>IA Form No: <input value={form.iaFormNo || ""} onChange={e => setForm(f => ({...f, iaFormNo: e.target.value}))} /></label>
+            </div>
+            <div>
+              <label>Payment Date: <input type="date" value={form.paymentDate || ""} onChange={e => setForm(f => ({...f, paymentDate: e.target.value}))} /></label>
+              <label>Status:
+                <select value={form.status || ""} onChange={e => setForm(f => ({...f, status: e.target.value}))}>
+                  <option value="">請選擇</option>
+                  <option value="Process">Process</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </label>
+            </div>
+            <div>
+              <label>PE單號: <input value={Array.isArray(form.peNumbers) ? form.peNumbers.join(",") : (form.peNumbers || "")} onChange={e => setForm(f => ({...f, peNumbers: e.target.value.split(",")}))} /></label>
+              <label>PE Status: <input value={form.peStatus || ""} onChange={e => setForm(f => ({...f, peStatus: e.target.value}))} /></label>
+            </div>
+            <div>
+              <label>Applied Expenses: <input type="number" value={form.appliedExpenses || ""} onChange={e => setForm(f => ({...f, appliedExpenses: e.target.value}))} /></label>
+              <label>In Process: <input type="number" value={form.inProcess || ""} onChange={e => setForm(f => ({...f, inProcess: e.target.value}))} /></label>
+              <label>Paid: <input type="number" value={form.paid || ""} onChange={e => setForm(f => ({...f, paid: e.target.value}))} /></label>
+              <label>Balance: <input type="number" value={form.balance || ""} onChange={e => setForm(f => ({...f, balance: e.target.value}))} /></label>
+            </div>
+            <button type="submit">儲存</button>
+          </form>
+        </Modal>
+      );
+    }
+
+    // ExpenseCMS 主體調整
+    function ExpenseCMS({ user, users, setUsers }) {
+      const [budgets, setBudgets] = useState([]);
+      const [expenses, setExpenses] = useState([]);
+      const [mainTab, setMainTab] = useState("budget");
+      // 匯率資料
+      const [rates, setRates] = useState([]);
+      const [budgetTab, setBudgetTab] = useState("dashboard");
+      const [expenseTab, setExpenseTab] = useState("dashboard");
+      const [showBudgetModal, setShowBudgetModal] = useState(false);
+      const [showExpenseModal, setShowExpenseModal] = useState(false);
+      const [filter, setFilter] = useState({
+        department: "",
+        team: "",
+        type: "",
+        pic: "",
+        year: "",
+        quarter: ""
+      });
+      const [editExpense, setEditExpense] = useState(null);
+      // 新增 estimates 狀態，並將其傳遞給 EstimateTab
+      const [estimates, setEstimates] = React.useState(() => {
+        try {
+          const saved = window.localStorage.getItem("estimates");
+          return saved ? JSON.parse(saved) : [];
+        } catch {
+          return [];
+        }
+      });
+
+      // estimates 持久化
+      React.useEffect(() => {
+        window.localStorage.setItem("estimates", JSON.stringify(estimates));
+      }, [estimates]);
+
+      const years = Array.from(new Set([
+        ...budgets.map(b => b.year).filter(Boolean),
+        ...expenses.map(e => {
+          const budget = budgets.find(b => b.id === e.budgetId);
+          return budget?.year;
+        }).filter(Boolean)
+      ])).sort();
+
+      function handleAddBudget(data) {
+        setBudgets(prev => [...prev, { id: Date.now(), ...data }]);
+        setShowBudgetModal(false);
+        setBudgetTab("dashboard");
+      }
+
+      function handleAddExpense(data) {
+        setExpenses(prev => [...prev, { id: Date.now(), ...data }]);
+        setShowExpenseModal(false);
+        setExpenseTab("dashboard");
+      }
+
+      function handleAddUser(user) {
+        setUsers(prev => [...prev, user]);
+      }
+
+      function handleChangeRole(uid, newRole) {
+        setUsers(prev => prev.map(u => u.id === uid ? { ...u, role: newRole } : u));
+      }
+
+      function handleChangePassword(uid, newPwd) {
+        setUsers(prev => prev.map(u => u.id === uid ? { ...u, password: newPwd } : u));
+      }
+
+      function handleEditExpense(expense) {
+        setEditExpense(expense);
+      }
+      function handleSaveExpenseEdit(newExpense) {
+        setExpenses(prev =>
+          prev.map(e => e.id === newExpense.id ? { ...e, ...newExpense } : e)
+        );
+        setEditExpense(null);
+      }
+
+      function getBudgetUsage(budgetId) {
+        const used = expenses.filter(e => e.budgetId === budgetId).reduce((sum, e) => sum + Number(e.amount), 0);
+        const budget = budgets.find(b => b.id === budgetId);
+        const percent = budget ? (used / budget.amount) * 100 : 0;
+        const remain = budget ? budget.amount - used : 0;
+        return { used, percent, remain };
+      }
+
+      // 修正：宣告各區塊 filter 狀態
+      const [budgetFilter, setBudgetFilter] = useState({ department: "", team: "", type: "", pic: "", year: "", quarter: "" });
+      const [expenseFilter, setExpenseFilter] = useState({ department: "", team: "", type: "", pic: "", year: "", quarter: "" });
+      const [estimateFilter, setEstimateFilter] = useState({ currency: "", applicant: "" });
+
+      // FilterBar 拆分為可重用的 FilterBar
+      function FilterBar({ filter, setFilter, users, onReset, years }) {
+        const teams = filter.department ? DEPT_TEAM_MAP[filter.department] : [].concat(...Object.values(DEPT_TEAM_MAP));
+        return (
+          <div className="filter-bar">
+            <label>部門:
+              <select value={filter.department} onChange={e => setFilter(f => ({ ...f, department: e.target.value, team: "" }))}>
+                <option value="">全部</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Team:
+              <select value={filter.team} onChange={e => setFilter(f => ({ ...f, team: e.target.value }))}>
+                <option value="">全部</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>Type:
+              <select value={filter.type} onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}>
+                <option value="">全部</option>
+                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>PIC:
+              <select value={filter.pic} onChange={e => setFilter(f => ({ ...f, pic: e.target.value }))}>
+                <option value="">全部</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </label>
+            <label>Year:
+              <select value={filter.year} onChange={e => setFilter(f => ({ ...f, year: e.target.value }))}>
+                <option value="">全部</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <label>Quarter:
+              <select value={filter.quarter} onChange={e => setFilter(f => ({ ...f, quarter: e.target.value }))}>
+                <option value="">全部</option>
+                {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </label>
+            <button type="button" onClick={onReset}>Reset</button>
+          </div>
+        );
+      }
+
+      // 各區塊 filterData
+      function filterBudgetData(data) {
+        return data.filter(d =>
+          (!budgetFilter.department || d.department === budgetFilter.department) &&
+          (!budgetFilter.team || d.team === budgetFilter.team) &&
+          (!budgetFilter.type || d.type === budgetFilter.type) &&
+          (!budgetFilter.pic ||
+            (Array.isArray(d.pics)
+              ? d.pics.includes(Number(budgetFilter.pic))
+              : d.pic == budgetFilter.pic)
+          ) &&
+          (!budgetFilter.year || d.year == budgetFilter.year) &&
+          (!budgetFilter.quarter || d.quarter === budgetFilter.quarter)
+        );
+      }
+      function filterExpenseData(data) {
+        return data.filter(e =>
+          (!expenseFilter.department || e.department === expenseFilter.department) &&
+          (!expenseFilter.team || e.team === expenseFilter.team) &&
+          (!expenseFilter.type || e.type === expenseFilter.type) &&
+          (!expenseFilter.pic ||
+            (Array.isArray(e.pics)
+              ? e.pics.includes(Number(expenseFilter.pic))
+              : e.pic == expenseFilter.pic)
+          ) &&
+          (!expenseFilter.year || e.year == expenseFilter.year) &&
+          (!expenseFilter.quarter || e.quarter === expenseFilter.quarter)
+        );
+      }
+      function filterEstimateData(data) {
+        return data.filter(e =>
+          (!estimateFilter.currency || e.currency === estimateFilter.currency) &&
+          (!estimateFilter.applicant || e.applicant === estimateFilter.applicant)
+        );
+      }
+
+      const filteredBudgets = filterBudgetData(
+        budgets.map(b => {
+          const usage = getBudgetUsage(b.id);
+          return {
+            ...b,
+            used: usage.used,
+            remain: usage.remain,
+            percent: b.amount ? (usage.used / b.amount * 100).toFixed(1) + "%" : "0.0%",
+            picName: Array.isArray(b.pics)
+              ? b.pics.map(pid => users.find(u => u.id === pid)?.name).filter(Boolean).join(", ")
+              : users.find(u => u.id === b.pic)?.name || "",
+            quarter: getQuarterFromDate(b.startDay)
+          };
+        })
+      );
+
+      const filteredExpenses = filterExpenseData(
+        expenses.map(e => {
+          const budget = budgets.find(b => b.id === e.budgetId) || {};
+          // 3. 實際請款如果有填寫PE單號，當實際請款金額=預估的Amt，則PE Status = close
+          let peStatus = e.peStatus;
+          if (e.peNumbers && e.amt && e.amount && Number(e.amount) === Number(e.amt)) {
+            peStatus = "Closed";
+          }
+          // 4. PE Status 下拉選單
+          // 5. Dashboard 欄位邏輯
+          let inProcess = 0, paid = 0, appliedExpenses = 0;
+          if (e.status === "Process") {
+            inProcess = Number(e.amount) || 0;
+          } else if (e.status === "Closed") {
+            paid = Number(e.amount) || 0;
+            appliedExpenses = Number(e.amount) || 0;
+          }
+          // 6. Balance = Budget - Applied Expenses
+          const budgetAmt = budget.amount || 0;
+          const balance = budgetAmt - appliedExpenses;
+          return {
+            ...e,
+            item: budget.item || "",
+            department: budget.department || "",
+            team: budget.team || "",
+            type: budget.type || "",
+            year: budget.year || "",
+            quarter: budget.quarter || getQuarterFromDate(budget.startDay) || "",
+            applyDate: e.applyDate || "",
+            picName: users.find(u => u.id === e.pic)?.name || "",
+            peStatus,
+            inProcess,
+            paid,
+            appliedExpenses,
+            balance
+          };
+        })
+      );
+
+      const filteredEstimates = filterEstimateData(estimates);
+
+      const isAdmin = user.role === "ADMIN";
+      const isManager = user.role === "MANAGER";
+      const isLeader = user.role === "LEADER";
+      const isUser = user.role === "USER";
+      const canEditBudget = isAdmin || isLeader;
+      const canEditExpense = isAdmin || isLeader || isManager || isUser;
+      const notifyManager = isManager;
+
+      function resetFilter() {
+        setFilter({
+          department: "",
+          team: "",
+          type: "",
+          pic: "",
+          year: "",
+          quarter: ""
+        });
+      }
+
+      return (
+        <div style={{ maxWidth: 1500, margin: "0 auto", fontFamily: "sans-serif" }}>
+          <h1>費用管理CMS</h1>
+          <div style={{ marginBottom: 16 }}>登入使用者：<b>{user.name}</b> ({roleLabel(user.role)})</div>
+          <div style={{ marginBottom: 16 }}>
+            {isAdmin && (
+              <button onClick={() => setMainTab("admin")} style={{ fontWeight: mainTab === "admin" ? "bold" : undefined }}>帳號管理</button>
+            )}
+            {/* 1. 移除 Filter tab */}
+            {/* <button onClick={() => setMainTab("filter")} style={{ fontWeight: mainTab === "filter" ? "bold" : undefined }}>Filter</button> */}
+            <button onClick={() => setMainTab("budget")} style={{ fontWeight: mainTab === "budget" ? "bold" : undefined }}>預算區塊</button>
+            <button onClick={() => setMainTab("expense")} style={{ fontWeight: mainTab === "expense" ? "bold" : undefined }}>實際請款區塊</button>
+            <button onClick={() => setMainTab("exchange")} style={{ fontWeight: mainTab === "exchange" ? "bold" : undefined }}>匯率區塊</button>
+            <button onClick={() => setMainTab("estimate")} style={{ fontWeight: mainTab === "estimate" ? "bold" : undefined }}>預估區塊</button>
+          </div>
+          {mainTab === "admin" && isAdmin && (
+            <AdminBar users={users} onAddUser={handleAddUser} currentUser={user} onChangeRole={handleChangeRole} onChangePassword={handleChangePassword} />
+          )}
+          {/* 1. 移除 Filter tab內容 */}
+          {/* {mainTab === "filter" && (
+            <FilterBarTab filter={filter} setFilter={setFilter} users={users} onReset={resetFilter} years={years} />
+          )} */}
+          {mainTab === "budget" && (
+            <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+              {/* Filter 放在區塊內 */}
+              <FilterBar filter={budgetFilter} setFilter={setBudgetFilter} users={users} onReset={() => setBudgetFilter({ department: "", team: "", type: "", pic: "", year: "", quarter: "" })} years={years} />
+              <div>
+                <button onClick={() => setBudgetTab("dashboard")}>Dashboard</button>
+                {canEditBudget && <button onClick={() => setShowBudgetModal(true)}>Add</button>}
+              </div>
+              {budgetTab === "dashboard" && (
+                <div>
+                  <h3>預算 Dashboard</h3>
+                  <BudgetDashboardTable
+                    data={filteredBudgets}
+                    users={users}
+                    onExport={exportToExcel}
+                  />
+                </div>
+              )}
+              <Modal open={showBudgetModal} onClose={() => { setShowBudgetModal(false); setBudgetTab("dashboard"); }}>
+                <h3>新增預算</h3>
+                <BudgetAddForm
+                  user={user}
+                  users={users}
+                  onAdd={handleAddBudget}
+                  onSuccess={() => {}}
+                  canEdit={canEditBudget}
+                />
+                <div style={{color: "#0a0", marginTop: 8}}>新增完成會自動回到Dashboard</div>
+              </Modal>
+            </section>
+          )}
+          {mainTab === "expense" && (
+            <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+              {/* Filter 放在區塊內 */}
+              <FilterBar filter={expenseFilter} setFilter={setExpenseFilter} users={users} onReset={() => setExpenseFilter({ department: "", team: "", type: "", pic: "", year: "", quarter: "" })} years={years} />
+              <div>
+                <button onClick={() => setExpenseTab("dashboard")}>Dashboard</button>
+                {canEditExpense && <button onClick={() => setShowExpenseModal(true)}>Add</button>}
+              </div>
+              {expenseTab === "dashboard" && (
+                <div>
+                  <h3>請款 Dashboard</h3>
+                  <ExpenseDashboardTable
+                    data={filteredExpenses}
+                    users={users}
+                    budgets={budgets}
+                    onExport={exportToExcel}
+                    onEdit={handleEditExpense}
+                  />
+                  <ExpenseEditForm
+                    open={!!editExpense}
+                    expense={editExpense}
+                    users={users}
+                    budgets={budgets}
+                    onSave={handleSaveExpenseEdit}
+                    onClose={() => setEditExpense(null)}
+                  />
+                </div>
+              )}
+              <Modal open={showExpenseModal} onClose={() => { setShowExpenseModal(false); setExpenseTab("dashboard"); }}>
+                <h3>新增請款</h3>
+                <ExpenseAddForm
+                  user={user}
+                  users={users}
+                  budgets={budgets}
+                  onAdd={handleAddExpense}
+                  onSuccess={() => {}}
+                  canEdit={canEditExpense}
+                  notifyManager={isManager}
+                  rates={rates}
+                  expenses={expenses}
+                />
+                <div style={{color: "#0a0", marginTop: 8}}>新增完成會自動回到Dashboard</div>
+              </Modal>
+            </section>
+          )}
+          {mainTab === "exchange" && (
+            <ExchangeRateTab user={user} rates={rates} setRates={setRates} />
+          )}
+          {mainTab === "estimate" && (
+            <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+              {/* Filter 放在區塊內 */}
+              <div className="filter-bar">
+                <label>Currency:
+                  <select value={estimateFilter.currency} onChange={e => setEstimateFilter(f => ({ ...f, currency: e.target.value }))}>
+                    <option value="">全部</option>
+                    <option value="TWD">TWD</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="CNY">CNY</option>
+                  </select>
+                </label>
+                <label>Applicant:
+                  <input value={estimateFilter.applicant} onChange={e => setEstimateFilter(f => ({ ...f, applicant: e.target.value }))} />
+                </label>
+                <button type="button" onClick={() => setEstimateFilter({ currency: "", applicant: "" })}>Reset</button>
+              </div>
+              {/* 2. 預估區塊預設顯示 Dashboard */}
+              <EstimateTab user={user} users={users} estimates={filteredEstimates} setEstimates={setEstimates} defaultTab="dashboard" />
+            </section>
+          )}
+        </div>
+      );
+    }
+
+    // 匯出 Excel 功能 (補回)
+    function exportToExcel(data, columns, filename) {
+      const wsData = [
+        columns.map(col => col.title),
+        ...data.map(row => columns.map(col => row[col.dataIndex]))
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      XLSX.writeFile(wb, filename);
+    }
+
+    // 預估區塊 EstimateTab
+    function EstimateTab({ user, users, estimates, setEstimates, defaultTab }) {
+      const [editIdx, setEditIdx] = React.useState(null);
+      const [editForm, setEditForm] = React.useState(null);
+      const [tab, setTab] = React.useState("dashboard");
+      const [showAddModal, setShowAddModal] = React.useState(false);
+
+      function handleAdd(e) {
+        e.preventDefault();
+        const form = Object.fromEntries(new FormData(e.target));
+        form.eshop = e.target.eshop.checked ? "是" : "否";
+        setEstimates(prev => [...prev, { ...form }]);
+        setShowAddModal(false);
+        e.target.reset();
+      }
+
+      function handleEdit(idx) {
+        setEditIdx(idx);
+        setEditForm({ ...estimates[idx] });
+      }
+
+      function handleEditSave(e) {
+        e.preventDefault();
+        const form = Object.fromEntries(new FormData(e.target));
+        form.eshop = e.target.eshop && e.target.eshop.checked ? "是" : "否";
+        setEstimates(prev => prev.map((item, i) => i === editIdx ? { ...item, ...form } : item));
+        setEditIdx(null);
+        setEditForm(null);
+      }
+
+      function handleDelete(idx) {
+        if (window.confirm("確定刪除？")) {
+          setEstimates(prev => prev.filter((_, i) => i !== idx));
+        }
+      }
+
+      return (
+        <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+            <button
+              className="inner-tab-btn"
+              style={{
+                fontWeight: "bold",
+                background: "#e6f0fa",
+                border: "1px solid #b3d4fc",
+                marginRight: 4
+              }}
+              disabled
+            >Dashboard</button>
+            <button
+              style={{
+                background: "#f5faff",
+                border: "1px solid #b3d4fc",
+                color: "#007bff",
+                fontWeight: "bold",
+                padding: "2px 10px"
+              }}
+              onClick={() => setShowAddModal(true)}
+            >Add</button>
+          </div>
+          <div>
+            <table width="100%" border={1} cellPadding={4}>
+              <thead>
+                <tr>
+                  <th>Applicant</th>
+                  <th>Dept code.</th>
+                  <th>COA Code</th>
+                  <th>Billing Company</th>
+                  <th>eShop</th>
+                  <th>Vendor Name</th>
+                  <th>Invoice No.</th>
+                  <th>Currency</th>
+                  <th>Amt</th>
+                  <th>Start date</th>
+                  <th>End date</th>
+                  <th>Description</th>
+                  <th>PE 單號</th>
+                  <th>PE Status</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {estimates.map((row, idx) => (
+                  editIdx === idx ? (
+                    <tr key={idx}>
+                      <td><input name="applicant" defaultValue={editForm.applicant} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="deptCode" defaultValue={editForm.deptCode} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="coaCode" defaultValue={editForm.coaCode} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="billingCompany" defaultValue={editForm.billingCompany} required form={`edit-form-${idx}`} /></td>
+                      <td>
+                        <input type="checkbox" name="eshop" defaultChecked={editForm.eshop === "是"} form={`edit-form-${idx}`} />
+                      </td>
+                      <td><input name="vendorName" defaultValue={editForm.vendorName} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="invoiceNo" defaultValue={editForm.invoiceNo} form={`edit-form-${idx}`} /></td>
+                      <td>
+                        <select name="currency" defaultValue={editForm.currency} form={`edit-form-${idx}`}>
+                          <option value="TWD">TWD</option>
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="CNY">CNY</option>
+                        </select>
+                      </td>
+                      <td><input name="amt" type="number" defaultValue={editForm.amt} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="startDate" type="date" defaultValue={editForm.startDate} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="endDate" type="date" defaultValue={editForm.endDate} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="description" defaultValue={editForm.description} required form={`edit-form-${idx}`} /></td>
+                      <td><input name="peNo" defaultValue={editForm.peNo} form={`edit-form-${idx}`} /></td>
+                      {/* 2. PE Status 下拉選單 */}
+                      <td>
+                        <select name="peStatus" defaultValue={editForm.peStatus} form={`edit-form-${idx}`}>
+                          <option value="Process">Process</option>
+                          <option value="Closed">Closed</option>
+                        </select>
+                      </td>
+                      <td>
+                        <form id={`edit-form-${idx}`} style={{display:"inline"}} onSubmit={handleEditSave}>
+                          <button type="submit">儲存</button>
+                          <button type="button" onClick={() => { setEditIdx(null); setEditForm(null); }}>取消</button>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={idx}>
+                      <td>{row.applicant}</td>
+                      <td>{row.deptCode}</td>
+                      <td>{row.coaCode}</td>
+                      <td>{row.billingCompany}</td>
+                      <td>{row.eshop}</td>
+                      <td>{row.vendorName}</td>
+                      <td>{row.invoiceNo}</td>
+                      <td>{row.currency}</td>
+                      <td>{row.amt}</td>
+                      <td>{row.startDate}</td>
+                      <td>{row.endDate}</td>
+                      <td>{row.description}</td>
+                      <td>{row.peNo}</td>
+                      {/* 2. PE Status 下拉選單 */}
+                      <td>
+                        <select
+                          value={row.peStatus || "Process"}
+                          disabled
+                          style={{ background: "transparent", border: "none" }}
+                        >
+                          <option value="Process">Process</option>
+                          <option value="Closed">Closed</option>
+                        </select>
+                      </td>
+                      <td>
+                        
+                        <button
+                          style={{
+                            background: "#f5faff",
+                            border: "1px solid #b3d4fc",
+                            color: "#007bff",
+                            fontWeight: "bold",
+                            padding: "2px 10px",
+                            marginRight: 4
+                          }}
+                          onClick={() => handleEdit(idx)}
+                        >Edit</button>
+                        
+                      </td>
+                    </tr>
+                  )
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Add Modal */}
+          <Modal open={showAddModal} onClose={() => setShowAddModal(false)}>
+            <h3>新增預估</h3>
+            <form onSubmit={handleAdd} style={{ marginTop: 0 }}>
+              <div>
+                <label>Applicant: <input name="applicant" defaultValue={user.name} required /></label>
+                <label>Dept code.: <input name="deptCode" required /></label>
+                <label>COA Code: <input name="coaCode" required /></label>
+                <label>Billing Company: <input name="billingCompany" required /></label>
+              </div>
+              <div>
+                <label>標註 eShop: <input type="checkbox" name="eshop" /></label>
+                <label>Vendor Name: <input name="vendorName" required /></label>
+                <label>Invoice No.(If known): <input name="invoiceNo" /></label>
+                <label>Currency:
+                  <select name="currency" defaultValue="TWD">
+                    <option value="TWD">TWD</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="CNY">CNY</option>
+                  </select>
+                </label>
+                <label>Amt: <input name="amt" type="number" required /></label>
+              </div>
+              <div>
+                <label>Estimated applied Start date: <input name="startDate" type="date" required /></label>
+                <label>Estimated applied End date: <input name="endDate" type="date" required /></label>
+              </div>
+              <div>
+                <label>Description: <input name="description" required style={{width:200}} /></label>
+              </div>
+              <div>
+                <label>PE 單號: <input name="peNo" /></label>
+                {/* 2. PE Status 下拉選單 */}
+                <label>PE Status:
+                  <select name="peStatus" defaultValue="Process">
+                    <option value="Process">Process</option>
+                    <option value="Closed">Closed</option>
+                  </select>
+                </label>
+              </div>
+              <button type="submit">新增</button>
+            </form>
+          </Modal>
+        </section>
+      );
+    }
+
+    function App() {
+      const [users, setUsers] = useState([
+        { id: 1, name: "王小明", role: "ADMIN", password: "admin123" },
+        { id: 2, name: "陳美麗", role: "MANAGER", password: "manager123" },
+        { id: 3, name: "李大仁", role: "USER", password: "user123" }
+      ]);
+      const [loginUser, setLoginUser] = useState(null);
+      return loginUser
+        ? <ExpenseCMS user={loginUser} users={users} setUsers={setUsers} />
+        : <Login users={users} onLogin={setLoginUser} />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
