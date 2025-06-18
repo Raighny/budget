@@ -54,7 +54,8 @@ button {
 .table {
   width: 100%;
   background: #fff;
-  table-layout: auto;
+  /* Use fixed layout to keep columns from shrinking too much */
+  table-layout: fixed;
   word-break: break-all;
   border-collapse: collapse;
   border: 1px solid #dee2e6;
@@ -177,4 +178,11 @@ input {
 .inline-form {
   display: inline-block;
   margin-bottom: 8px;
+}
+
+/* Ensure description column has reasonable width */
+.table td:nth-child(4),
+.table th:nth-child(4) {
+  min-width: 150px;
+  word-wrap: break-word;
 }
