@@ -1,48 +1,429 @@
 <!DOCTYPE html>
+
 <html lang="zh-tw">
 <head>
-  <meta charset="UTF-8" />
-  <title>費用管理CMS 預覽</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <style>
-    body { background: #f7f7f7; }
-    button { margin-right: 8px; }
-    table { 
+<meta charset="utf-8"/>
+<title>費用管理CMS 預覽</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
+
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script crossorigin="" src="https://unpkg.com/react@18/umd/react.development.js">
+
+// 取得匯率資料
+function getExchangeRate(currency, rates) {
+  if (!currency || !rates) return 1;
+  return rates[currency] || 1;
+}
+
+// 自動計算 USD 金額
+function autoUpdateUSD(form, rates) {
+  const currency = form.currency;
+  const original = parseFloat(form.originalAmount || 0);
+  const rate = getExchangeRate(currency, rates);
+  form.amount = (original * rate).toFixed(2);
+}
+
+// 計算 Balance = 預算 - 請款加總
+function calculateBalance(budget, appliedExpenses) {
+  if (!budget) return 0;
+  const totalApplied = appliedExpenses
+    .filter(exp => exp.budgetId === budget.id)
+    .reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+  return (budget.amount - totalApplied).toFixed(2);
+}
+</script>
+<script crossorigin="" src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+    body {
+      background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
+      font-family: 'Segoe UI', 'Microsoft JhengHei', Arial, sans-serif;
+      color: #222;
+      margin: 0;
+      min-height: 100vh;
+    }
+    h1, h2, h3 {
+      color: #2a4d7a;
+      letter-spacing: 1px;
+    }
+    button {
+      margin-right: 8px;
+      background: linear-gradient(90deg, #4f8cff 0%, #6ec6ff 100%);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 18px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      box-shadow: 0 2px 6px #0001;
+      transition: background 0.2s, box-shadow 0.2s, color 0.2s;
+    }
+    button:hover, .section-tabs button:hover {
+      background: linear-gradient(90deg, #357ae8 0%, #4fc3f7 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px #0002;
+    }
+    .section-tabs button {
+      background: #e6f0fa;
+      color: #2a4d7a;
+      border: 1px solid #b3d4fc;
+      border-radius: 5px;
+      margin-right: 8px;
+      padding: 5px 16px;
+      font-weight: 500;
+      transition: background 0.2s, color 0.2s;
+    }
+    .section-tabs button:disabled {
+      background: #b3d4fc;
+      color: #fff;
+    }
+    table {
       background: #fff;
       width: 100%;
       table-layout: auto;
       word-break: break-all;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px #0001;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: none; /* 移除黑色外框 */
     }
-    select, input { margin-right: 8px; }
-    .login-box { max-width: 320px; margin: 80px auto; padding: 32px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; }
-    .filter-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; display: flex; align-items: center; gap: 8px; }
-    .export-btn { float: right; }
-    .table-wrap { 
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border: none; /* 移除黑色外框 */
+    }
+    table, th, td {
+      font-size: 80%;
+    }
+    thead th {
+      background: linear-gradient(180deg, #e3f0ff 0%, #f9f9f9 100%);
+      color: #2a4d7a;
+      font-weight: bold;
+      border-bottom: 2px solid #b3d4fc;
+      position: relative;
+    }
+    tbody tr:nth-child(even) {
+      background: #f5faff;
+    }
+    tbody tr:hover {
+      background: #e6f0fa;
+      transition: background 0.2s;
+    }
+    tfoot td {
+      background: #e6f0fa;
+      font-weight: bold;
+      color: #2a4d7a;
+      border-top: 2px solid #b3d4fc;
+    }
+    select, input[type="text"], input[type="number"], input[type="date"], input[type="password"] {
+      margin-right: 8px;
+      padding: 5px 8px;
+      border: 1px solid #b3d4fc;
+      border-radius: 4px;
+      background: #f9fbfd;
+      font-size: 15px;
+      transition: border 0.2s;
+    }
+    select:focus, input:focus {
+      border: 1.5px solid #4f8cff;
+      outline: none;
+      background: #e6f0fa;
+    }
+    .login-box {
+      max-width: 340px;
+      margin: 80px auto;
+      padding: 36px 32px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px #4f8cff22;
+      border: 1px solid #b3d4fc;
+    }
+    .login-box h2 {
+      margin-bottom: 18px;
+      color: #357ae8;
+      font-weight: bold;
+    }
+    .filter-bar {
+      margin-bottom: 16px;
+      background: #f5faff;
+      padding: 12px 10px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 6px #b3d4fc33;
+
+    }
+    .export-btn {
+      float: right;
+      background: linear-gradient(90deg, #429945 0%, #79df8f 100%);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 18px;
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      margin-top: 4px;
+      box-shadow: 0 2px 6px #0001;
+      transition: background 0.2s;
+    }
+    .export-btn:hover {
+      background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%);
+      color: #fff;
+    }
+    .table-wrap {
       position: relative;
       overflow-x: auto;
       max-width: 100%;
+      margin-top: 10px;
+      margin-bottom: 10px;
     }
     .modal-backdrop {
       position: fixed; left: 0; top: 0; width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.2); z-index: 1000; display: flex; align-items: center; justify-content: center;
+      background: rgba(60, 120, 200, 0.15); z-index: 1000; display: flex; align-items: center; justify-content: center;
+      animation: fadeIn 0.2s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     .modal-content {
-      background: #fff; padding: 32px 24px; border-radius: 8px; min-width: 260px; text-align: center; box-shadow: 0 2px 16px #0002;
+      background: #fff;
+      padding: 36px 28px;
+      border-radius: 12px;
+      min-width: 280px;
+      text-align: center;
+      box-shadow: 0 4px 32px #4f8cff33;
+      border: 1px solid #b3d4fc;
+      animation: popIn 0.2s;
     }
-    .admin-bar { margin-bottom: 16px; background: #fff; padding: 8px; border-radius: 6px; }
-    .notify { color: #d00; font-weight: bold; margin-top: 8px; }
-    .section-tabs { margin-bottom: 16px; }
-    .section-tabs button { margin-right: 8px; }
-    .section-content { margin-bottom: 16px; }
+    @keyframes popIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .admin-bar {
+      margin-bottom: 16px;
+      background: #f5faff;
+      padding: 12px 10px;
+      border-radius: 8px;
+      box-shadow: 0 1px 6px #b3d4fc33;
+
+    }
+    .notify {
+      color: #d00;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+    .section-tabs {
+      margin-bottom: 16px;
+    }
+    .section-tabs button {
+      margin-right: 8px;
+    }
+    .section-content {
+      margin-bottom: 16px;
+    }
+    /* 美化表單內的 label */
+    label {
+      margin-right: 12px;
+      font-weight: 500;
+      color: #2a4d7a;
+    }
+    /* 美化 Dashboard 標題 */
+    h3 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 1.2em;
+      border-left: 4px solid #4f8cff;
+      padding-left: 10px;
+      background: linear-gradient(90deg, #e3f0ff 0%, #f9f9f9 100%);
+      border-radius: 4px;
+      display: inline-block;
+    }
+    /* 美化排序按鈕 */
+    th button {
+      background: none;
+      border: none;
+      color: #4f8cff;
+      font-size: 13px;
+      padding: 0 2px;
+      cursor: pointer;
+      vertical-align: middle;
+      margin-left: 2px;
+      transition: color 0.2s;
+    }
+    th button:hover {
+      color: #357ae8;
+      text-shadow: 0 1px 2px #b3d4fc;
+    }
+    /* 美化表單內的 + - 按鈕 */
+    form button[type="button"] {
+      background: #e6f0fa;
+      color: #357ae8;
+      border: 1px solid #b3d4fc;
+      border-radius: 4px;
+      padding: 2px 10px;
+      font-size: 15px;
+      margin-left: 2px;
+      margin-right: 2px;
+      box-shadow: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    form button[type="button"]:hover {
+      background: #b3d4fc;
+      color: #fff;
+    }
+    /* 美化 Dashboard 內的操作按鈕 */
+    td button {
+      background: #f5faff;
+      color: #357ae8;
+      border: 1px solid #b3d4fc;
+      border-radius: 4px;
+      padding: 2px 10px;
+      font-size: 15px;
+      font-weight: bold;
+      margin-right: 2px;
+      margin-left: 2px;
+      box-shadow: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    td button:hover {
+      background: #b3d4fc;
+      color: #fff;
+    }
+    /* 美化刪除按鈕 */
+    td button[style*="color: #d00"] {
+      background: #fff0f0 !important;
+      color: #d00 !important;
+      border: 1px solid #d00 !important;
+    }
+    td button[style*="color: #d00"]:hover {
+      background: #ffd6d6 !important;
+      color: #fff !important;
+    }
+    /* 美化通知訊息 */
+    .notify, .login-box div[style*="color: #d00"] {
+      color: #d00;
+      font-weight: bold;
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+    /* 美化 Add/Cancel/儲存按鈕 */
+    form button[type="submit"], form button[type="button"] {
+      min-width: 60px;
+    }
+    /* 美化 disabled 狀態 */
+    button:disabled, select:disabled, input:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: #e3e3e3 !important;
+      color: #888 !important;
+    }
+    /* 美化 section 區塊 */
+    section {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px #4f8cff11;
+      padding: 24px 18px;
+      margin-bottom: 24px;
+      border: 1px solid #b3d4fc;
+    }
+    /* 美化表單欄位間距 */
+    form > div {
+      margin-bottom: 10px;
+    }
+    /* 美化 Add Modal 標題 */
+    .modal-content h3 {
+      margin-top: 0;
+      margin-bottom: 18px;
+      color: #357ae8;
+      font-weight: bold;
+      border: none;
+      background: none;
+      padding-left: 0;
+    }
+    /* 美化 EstimateTab 內部按鈕 */
+    .inner-tab-btn {
+      background: #e6f0fa !important;
+      color: #357ae8 !important;
+      border: 1px solid #b3d4fc !important;
+      border-radius: 5px;
+      margin-right: 8px;
+      padding: 5px 16px;
+      font-weight: 500;
+    }
+    .inner-tab-btn:disabled {
+      background: #b3d4fc !important;
+      color: #fff !important;
+    }
+    /* 滾動條美化 */
+    ::-webkit-scrollbar {
+      width: 8px;
+      background: #e6f0fa;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #b3d4fc;
+      border-radius: 4px;
+    }
+    /* 響應式設計 */
+    @media (max-width: 900px) {
+      .table-wrap, table, section {
+        font-size: 14px;
+      }
+      .login-box {
+        padding: 20px 8px;
+      }
+      .modal-content {
+        padding: 18px 8px;
+      }
+    }
+    @media (max-width: 600px) {
+      .filter-bar, .admin-bar, section {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 10px 4px;
+      }
+      .filter-bar label, .admin-bar label {
+        margin-bottom: 6px;
+      }
+      table, th, td {
+        font-size: 13px;
+      }
+    }
   </style>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
+<div id="root"></div>
+<script type="text/babel">
+// Firebase 初始化
+const firebaseConfig = {
+  apiKey: "AIzaSyB0FUeyJwKg2LCu4RskpQ0gNx0CCOM_3go",
+  authDomain: "budget-demo-52aa3.firebaseapp.com",
+  projectId: "budget-demo-52aa3",
+  storageBucket: "budget-demo-52aa3.firebasestorage.app",
+  messagingSenderId: "161930389900",
+  appId: "1:161930389900:web:1527b134ec421c37be8ea9",
+  measurementId: "G-ML5DBKZCF0"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+
+function handleDeleteBudget(id) {
+  if (window.confirm("確定要刪除這筆預算？")) {
+    setBudgets(prev => prev.filter(b => b.id !== id));
+  }
+}
+
     // filepath: untitled://untitled/index.html
     const { useState, useEffect } = React;
 
@@ -98,10 +479,12 @@
     function Login({ users, onLogin }) {
       const [userId, setUserId] = useState(users[0]?.id || "");
       const [password, setPassword] = useState("");
+      const [showPwd, setShowPwd] = useState(false);
       const [error, setError] = useState("");
       function handleLogin(e) {
         e.preventDefault();
-        const user = users.find(u => u.id === userId);
+        // 修正 userId 型別問題
+        const user = users.find(u => String(u.id) === String(userId));
         if (!user) {
           setError("請選擇使用者");
           return;
@@ -119,15 +502,37 @@
           <form onSubmit={handleLogin}>
             <div>
               <label>使用者：
-                <select value={userId} onChange={e => setUserId(Number(e.target.value))}>
+                <select value={userId} onChange={e => setUserId(e.target.value)}>
                   {users.map(u => <option key={u.id} value={u.id}>{u.name} ({roleLabel(u.role)})</option>)}
                 </select>
               </label>
             </div>
             <div>
-              <label>密碼：
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
-              </label>
+              
+<label>密碼：
+  <div style={{ position: "relative", display: "inline-block" }}>
+    <input
+      type={showPwd ? "text" : "password"}
+      id="login-password"
+      value={password}
+      onChange={e => setPassword(e.target.value)}
+    />
+    <span
+      style={{
+        cursor: "pointer",
+        position: "absolute",
+        right: 10,
+        top: 4,
+        fontSize: "16px",
+        color: "#4f8cff"
+      }}
+      onClick={() => setShowPwd(p => !p)}
+    >
+      <i className={`fas ${showPwd ? "fa-eye" : "fa-eye-slash"}`}></i>
+    </span>
+  </div>
+</label>
+
             </div>
             <button type="submit">登入</button>
             {error && <div style={{ color: "#d00", marginTop: 8 }}>{error}</div>}
@@ -142,6 +547,7 @@
       const [name, setName] = useState("");
       const [role, setRole] = useState("USER");
       const [password, setPassword] = useState("");
+      const [showPwd, setShowPwd] = useState(false);
       const [notify, setNotify] = useState("");
       // 新增: 刪除帳號
       function handleDeleteUser(uid) {
@@ -326,7 +732,7 @@
     const CURRENCIES = ["EUR", "TWD", "USD", "CNY"];
 
     // 匯率區塊
-    function ExchangeRateTab({ user, rates, setRates }) {
+    function ExchangeRateTab({ user, rates, setRates, handleDeleteRate }) {
       const [year, setYear] = useState(new Date().getFullYear());
       const [quarter, setQuarter] = useState("Q1");
       const [editRates, setEditRates] = useState({});
@@ -335,10 +741,7 @@
         setEditRates(found ? { ...found } : { year, quarter, EUR: "", TWD: "", USD: "", CNY: "" });
       }, [year, quarter, rates]);
       function handleSave() {
-        setRates(prev => {
-          const others = prev.filter(r => !(r.year == year && r.quarter === quarter));
-          return [...others, { ...editRates }];
-        });
+        setRates(editRates);
       }
       // 修改這裡：admin和manager都可以編輯
       const isManagerOrAdmin = user.role === "MANAGER" || user.role === "ADMIN";
@@ -360,6 +763,7 @@
               <tr>
                 <th>Currency</th>
                 <th>Rate (to USD)</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -374,6 +778,9 @@
                       onChange={e => setEditRates(r => ({ ...r, [cur]: e.target.value }))}
                       disabled={!isManagerOrAdmin}
                     />
+                  </td>
+                  <td>
+                    <button onClick={() => handleDeleteRate(year, quarter)} style={{color:"#d00"}}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -427,7 +834,10 @@
             </label>
           </div>
           <div>
-            <label>Item: <input value={item} onChange={e => setItem(e.target.value)} /></label>
+            
+  <label>Item: 
+    <input value={item} onChange={e => setItem(e.target.value)} />
+  </label>
             <label>Description: <input value={description} onChange={e => setDescription(e.target.value)} /></label>
           </div>
           <div>
@@ -459,7 +869,14 @@
             <label>End Day:
               <input type="date" value={endDay} onChange={e => setEndDay(e.target.value)} />
             </label>
-            <label>Amount: <input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></label>
+            <label>Amount (原幣): 
+  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+</label>
+
+<label>Amount (USD 換算): 
+  <input type="number" value={amountUSD} readOnly />
+</label>
+
           </div>
           <button type="submit">新增預算</button>
         </form>
@@ -485,9 +902,14 @@
     }
 
     // BudgetDashboardTable 預算Dashboard顯示USD、已使用金額轉USD
-    function BudgetDashboardTable({ data, users, onExport }) {
+    function BudgetDashboardTable({ data, users, onExport, onDelete, onEdit }) {
       // 新增排序狀態
       const [sort, setSort] = React.useState({ key: null, order: "asc" });
+      // 編輯預算用 state
+      const [editBudget, setEditBudget] = React.useState(null);
+      function handleEditBudget(budget) {
+        setEditBudget(budget);
+      }
       const totalAmount = data.reduce((sum, b) => sum + Number(b.amount), 0);
       const totalUsed = data.reduce((sum, b) => sum + Number(b.used), 0);
       const totalRemain = data.reduce((sum, b) => sum + Number(b.remain), 0);
@@ -548,6 +970,7 @@
                     </button>
                   </th>
                 ))}
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -569,28 +992,46 @@
                   <td>{formatNumber(b.used)}</td>
                   <td>{formatNumber(b.remain)}</td>
                   <td>{b.percent}</td>
+                  <td>
+                    <button onClick={() => handleEditBudget(b)}>Edit</button>
+                    <button onClick={() => onDelete && onDelete(b.id)} style={{color:"#d00"}}>Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={8} style={{ textAlign: "right" }}>Total</td>
+                <td colSpan={8} style={{ textAlign: "right" }}>Total(USD)</td>
                 <td>{formatNumber(totalAmount)}</td>
                 <td>{formatNumber(totalUsed)}</td>
                 <td>{formatNumber(totalRemain)}</td>
                 <td></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
+          {/* 編輯預算 Modal */}
+          <Modal open={!!editBudget} onClose={() => setEditBudget(null)}>
+            <h3>編輯預算</h3>
+            <BudgetEditForm
+              budget={editBudget}
+              users={users}
+              onSave={updated => {
+                onEdit && onEdit(updated);
+              }}
+              onClose={() => setEditBudget(null)}
+            />
+          </Modal>
         </div>
       );
     }
 
     // ExpenseDashboardTable 請款Dashboard No.為第一欄且不可編輯
-    function ExpenseDashboardTable({ data, users, budgets, onExport, onEdit }) {
+    function ExpenseDashboardTable({ data, users, budgets, onExport, onEdit, handleImportExpenses, handleDeleteExpense }) {
       // 新增排序狀態
       const [sort, setSort] = React.useState({ key: null, order: "asc" });
       const totalAmount = data.reduce((sum, e) => sum + Number(e.amount), 0);
+      // 移除 EDIT 欄位
       const columns = [
         { title: "No.", dataIndex: "unitId" },
         { title: "預算Item", dataIndex: "item" },
@@ -608,19 +1049,12 @@
         { title: "Invoice Number", dataIndex: "invoiceNumber" },
         { title: "幣別", dataIndex: "currency" },
         { title: "原幣金額", dataIndex: "originalAmount" },
-        { title: "MPOR ID", dataIndex: "mporId" },
-        { title: "Batch Number", dataIndex: "batchNumber" },
-        { title: "IA Form No", dataIndex: "iaFormNo" },
         { title: "Payment Date", dataIndex: "paymentDate" },
         { title: "Status", dataIndex: "status" },
-        { title: "PE單號", dataIndex: "peNumbers" },
-        { title: "PE Status", dataIndex: "peStatus" },
         { title: "Applied Expenses", dataIndex: "appliedExpenses" },
         { title: "In Process", dataIndex: "inProcess" },
         { title: "Paid", dataIndex: "paid" },
-        { title: "Balance", dataIndex: "balance" },
-        { title: "金額(USD)", dataIndex: "amount" },
-        { title: "EDIT", dataIndex: "edit" }
+        { title: "Balance", dataIndex: "balance" }
       ];
       // 排序函式
       function handleSort(key) {
@@ -645,7 +1079,7 @@
       }, [data, sort]);
       return (
         <div className="table-wrap">
-          <button className="export-btn" onClick={() => onExport(data, columns.slice(0, -1), "expense_dashboard.xlsx")}>匯出 Excel</button>
+          <button className="export-btn" onClick={() => onExport(data, columns, "expense_dashboard.xlsx")}>匯出 Excel</button>
           <table width="100%" border={1} cellPadding={4}>
             <thead>
               <tr>
@@ -665,49 +1099,66 @@
                     </button>
                   </th>
                 ))}
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {sortedData.map((e, idx) => (
-                <tr key={e.id || idx}>
-                  <td>{e.unitId}</td>
-                  <td>{e.item}</td>
-                  <td>{e.department}</td>
-                  <td>{e.team}</td>
-                  <td>{e.type}</td>
-                  <td>{users.find(u => u.id === e.pic)?.name || ""}</td>
-                  <td>{e.year}</td>
-                  <td>{e.quarter}</td>
-                  <td>{formatDate(e.applyDate)}</td>
-                  <td>{e.description}</td>
-                  <td>{e.vendor}</td>
-                  <td>{e.paymentType}</td>
-                  <td>{formatDate(e.invoiceDate)}</td>
-                  <td>{e.invoiceNumber}</td>
-                  <td>{e.currency}</td>
-                  <td>{formatNumber(e.originalAmount)}</td>
-                  <td>{e.mporId}</td>
-                  <td>{e.batchNumber}</td>
-                  <td>{e.iaFormNo}</td>
-                  <td>{formatDate(e.paymentDate)}</td>
-                  <td>{e.status}</td>
-                  <td>{Array.isArray(e.peNumbers) ? e.peNumbers.join(",") : e.peNumbers}</td>
-                  <td>{e.peStatus}</td>
-                  <td>{formatNumber(e.appliedExpenses)}</td>
-                  <td>{formatNumber(e.inProcess)}</td>
-                  <td>{formatNumber(e.paid)}</td>
-                  <td>{formatNumber(e.balance)}</td>
-                  <td>{formatNumber(e.amount)}</td>
-                  <td>
-                    <button onClick={() => onEdit && onEdit(e)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
+              {sortedData.map((e, idx) => {
+                // 自動換算金額(USD)
+                let usdAmount = "";
+                if (e.originalAmount && e.currency && e.year && e.quarter && Array.isArray(budgets)) {
+                  // 取得匯率
+                  const foundBudget = budgets.find(b => b.id === e.budgetId);
+                  const year = e.year || foundBudget?.year;
+                  const quarter = e.quarter || getQuarterFromDate(foundBudget?.startDay);
+                  const rate = getRateToUSD(window.rates || [], e.currency, year, quarter);
+                  usdAmount = (Number(e.originalAmount) * rate).toFixed(2);
+                } else if (e.amount) {
+                  usdAmount = Number(e.amount).toFixed(2);
+                }
+                return (
+                  <tr key={e.id || idx}>
+                    <td>{e.unitId}</td>
+                    <td>{e.item}</td>
+                    <td>{e.department}</td>
+                    <td>{e.team}</td>
+                    <td>{e.type}</td>
+                    <td>{users.find(u => u.id === e.pic)?.name || ""}</td>
+                    <td>{e.year}</td>
+                    <td>{e.quarter}</td>
+                    <td>{formatDate(e.applyDate)}</td>
+                    <td>{e.description}</td>
+                    <td>{e.vendor}</td>
+                    <td>{e.paymentType}</td>
+                    <td>{formatDate(e.invoiceDate)}</td>
+                    <td>{e.invoiceNumber}</td>
+                    <td>{e.currency}</td>
+                    <td>{formatNumber(e.originalAmount)}</td>
+                    <td>{formatDate(e.paymentDate)}</td>
+                    <td>{e.status}</td>
+                    <td>{formatNumber(e.appliedExpenses)}</td>
+                    <td>{formatNumber(e.inProcess)}</td>
+                    <td>{formatNumber(e.paid)}</td>
+                    <td>{formatNumber(e.balance)}</td>
+                    <td>
+                      <button onClick={() => onEdit && onEdit(e)}>Edit</button>
+                      <button onClick={() => handleDeleteExpense(e.id)} style={{color:"#d00"}}>Delete</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={columns.length-1} style={{ textAlign: "right" }}>Total</td>
+                <td colSpan={columns.length-7} style={{ textAlign: "right" }}>Total(USD)</td>
                 <td>{formatNumber(totalAmount)}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -727,12 +1178,12 @@
       const [pic, setPic] = useState(user.id);
       const [amount, setAmount] = useState("");
       const [applyDate, setApplyDate] = useState("");
-      const [notify, setNotify] = useState("");
       const [vendor, setVendor] = useState("");
       const [paymentType, setPaymentType] = useState("");
       const [invoiceDate, setInvoiceDate] = useState("");
       const [invoiceNumber, setInvoiceNumber] = useState("");
       const [currency, setCurrency] = useState("USD");
+      const [amountUSD, setAmountUSD] = useState("");
       const teams = department ? DEPT_TEAM_MAP[department] : [];
       // 累積ID
       const nextNo = (expenses && expenses.length > 0)
@@ -749,16 +1200,18 @@
       );
       const selectedBudget = budgets.find(b => b.id === budgetId);
 
-      // 修正：移除 item 相關的 input 欄位與狀態
-      // useEffect(() => { setTeam(""); }, [department]);
       useEffect(() => { setTeam(""); }, [department]);
+      // 預設選第一個可選 budgetId
       useEffect(() => { setBudgetId(filteredBudgets[0]?.id || ""); }, [department, team, type, quarter, year, budgets.length]);
+      // 選擇 budgetId 時自動帶出 Description 與 Type
       useEffect(() => {
         const budget = budgets.find(b => b.id === budgetId);
-        if (budget && budget.item) {
-          setDescription(budget.item);
+        if (budget) {
+          setDescription(budget.description || "");
+          setType(budget.type || "");
         } else {
           setDescription("");
+          setType("");
         }
       }, [budgetId, budgets]);
 
@@ -769,11 +1222,11 @@
           if (!budgetId || !pic || !amount || !applyDate) return;
           // 幣別轉USD
           const rate = getRateToUSD(rates, currency, year, quarter || getQuarterFromDate(selectedBudget?.startDay));
-          const usdAmount = Number(amount) / rate;
+          const usdAmount = Number(amount) * rate;
           const unitId = nextNo;
           onAdd({
             budgetId,
-            description: selectedBudget?.item || "",
+            description, // 用目前 description 欄位
             pic,
             amount: usdAmount, // 寫入USD
             applyDate,
@@ -803,6 +1256,28 @@
             </label>
           </div>
           <div>
+            <label>Item:
+              <select
+                value={budgetId}
+                onChange={e => setBudgetId(e.target.value)}
+                disabled={filteredBudgets.length === 0}
+              >
+                {filteredBudgets.length === 0 && <option value="">無可選預算</option>}
+                {filteredBudgets.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.item}（{b.description}）
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>Description:
+              <input
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </label>
+          </div>
+          <div>
             <label>Type:
               <select value={type} onChange={e => setType(e.target.value)}>
                 <option value="">請選擇</option>
@@ -828,7 +1303,13 @@
           </div>
           <div>
             <label>Apply Date: <input type="date" value={applyDate} onChange={e => setApplyDate(e.target.value)} /></label>
-            <label>Description: <input value={description} onChange={e => setDescription(e.target.value)} /></label>
+            {/* 新增幣別選單 */}
+            <label>Currency:
+              <select value={currency} onChange={e => setCurrency(e.target.value)}>
+                {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+              </select>
+            </label>
+            <label>Amount: <input type="number" value={amount} onChange={e => setAmount(e.target.value)} /></label>
           </div>
           <div>
             <label>廠商:
@@ -856,12 +1337,122 @@
       );
     }
 
+    // 預算編輯表單
+    function BudgetEditForm({ budget, users, onSave, onClose }) {
+      const [form, setForm] = React.useState({ ...budget });
+      React.useEffect(() => { setForm({ ...budget }); }, [budget]);
+      if (!budget) return null;
+      const teams = form.department ? DEPT_TEAM_MAP[form.department] : [];
+      return (
+        <form onSubmit={e => {
+          e.preventDefault();
+          onSave(form);
+          onClose();
+        }}>
+          <div>
+            <label>部門:
+              <select value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value, team: "" }))}>
+                <option value="">請選擇</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Team:
+              <select value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} disabled={!form.department}>
+                <option value="">請選擇</option>
+                {teams.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Item: <input value={form.item || ""} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} /></label>
+            <label>Description: <input value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></label>
+          </div>
+          <div>
+            <label>Type:
+              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                <option value="">請選擇</option>
+                {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>PIC:
+              {Array.isArray(form.pics) ? form.pics.map((picId, idx) => (
+                <span key={idx} style={{marginRight:4}}>
+                  <select
+                    value={picId}
+                    onChange={e => setForm(f => ({
+                      ...f,
+                      pics: f.pics.map((p, i) => i === idx ? Number(e.target.value) : p)
+                    }))}
+                  >
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  {form.pics.length > 1 && <button type="button" onClick={() => setForm(f => ({ ...f, pics: f.pics.filter((_, i) => i !== idx) }))}>-</button>}
+                </span>
+              )) : (
+                <select value={form.pic} onChange={e => setForm(f => ({ ...f, pic: Number(e.target.value) }))}>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              )}
+              <button type="button" onClick={() => setForm(f => ({ ...f, pics: [...(f.pics || [f.pic]), users[0]?.id] }))}>+</button>
+            </label>
+          </div>
+          <div>
+            <label>Start Day:
+              <input type="date" value={form.startDay || ""} onChange={e => setForm(f => ({ ...f, startDay: e.target.value }))} />
+            </label>
+            <label>End Day:
+              <input type="date" value={form.endDay || ""} onChange={e => setForm(f => ({ ...f, endDay: e.target.value }))} />
+            </label>
+            <label>Amount: <input type="number" value={form.amount || ""} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></label>
+          </div>
+          <button type="submit">儲存</button>
+        </form>
+      );
+    }
+
     // ExpenseEditForm 請款編輯表單（No.不可編輯）
     function ExpenseEditForm({ open, expense, users, budgets, onSave, onClose }) {
       const [form, setForm] = useState({ ...expense });
+      
+useEffect(() => {
+  if (!expense) return;
+  setForm({ ...expense });
+  // 補上 quarter，如果沒帶的話從 budget 補
+  if (!expense.quarter && expense.budgetId && Array.isArray(window.budgets)) {
+    const budget = window.budgets.find(b => b.id == expense.budgetId);
+    if (budget && budget.startDay) {
+      const month = new Date(budget.startDay).getMonth() + 1;
+      const inferredQuarter = month <= 3 ? "Q1" : month <= 6 ? "Q2" : month <= 9 ? "Q3" : "Q4";
+      setForm(f => ({ ...f, quarter: inferredQuarter }));
+    }
+  }
+}, [expense]);
+
+
+      // 新增: 自動計算 USD 金額
       useEffect(() => {
-        setForm({ ...expense });
-      }, [expense]);
+        // 只有當原幣金額、幣別、年、季有值時才自動計算
+        if (form.originalAmount && form.currency && form.year && form.quarter) {
+          // 取得匯率
+          const rate = getRateToUSD(window.rates || [], form.currency, form.year, form.quarter);
+          // 只有當匯率大於0且不是USD時才換算
+          console.log("🧾 [換算測試]", {
+    currency: form.currency,
+    year: form.year,
+    quarter: form.quarter,
+    rate: rate
+  });
+  if (!rate || isNaN(rate) || rate <= 0) {
+    console.warn("❌ 找不到有效匯率，將不進行換算");
+    setForm(f => ({ ...f, amount: f.originalAmount }));
+  } else if (form.currency !== "USD") {
+            setForm(f => ({ ...f, amount: (Number(f.originalAmount) * rate).toFixed(2) }));
+          } else if (form.currency === "USD") {
+            setForm(f => ({ ...f, amount: f.originalAmount }));
+          }
+        }
+      }, [form.originalAmount, form.currency, form.year, form.quarter]);
+
       if (!open) return null;
       const budgetOptions = budgets || [];
       return (
@@ -886,13 +1477,49 @@
                   {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </label>
-              <label>金額(USD): <input type="number" value={form.amount || ""} onChange={e => setForm(f => ({...f, amount: e.target.value}))} /></label>
+             
               <label>幣別:
-                <select value={form.currency} onChange={e => setForm(f => ({...f, currency: e.target.value}))}>
+                <select value={form.currency} onChange={e => {
+      const newCurrency = e.target.value;
+      setForm(f => {
+        let year = f.year;
+let quarter = f.quarter;
+if ((!year || !quarter) && Array.isArray(window.budgets)) {
+  const b = window.budgets.find(b => b.id == f.budgetId);
+  if (b?.startDay) {
+    year = new Date(b.startDay).getFullYear();
+    const m = new Date(b.startDay).getMonth() + 1;
+    quarter = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
+  }
+}
+const rate = getRateToUSD(window.rates || [], newCurrency, year, quarter);
+        console.log("💱 幣別變動換算", { rate });
+        const usd = (!rate || isNaN(rate) || rate <= 0) ? f.originalAmount : (Number(f.originalAmount) * rate).toFixed(2);
+        return { ...f, currency: newCurrency, amount: usd };
+      });
+    }}>
                   {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
                 </select>
               </label>
-              <label>原幣金額: <input type="number" value={form.originalAmount || ""} onChange={e => setForm(f => ({...f, originalAmount: e.target.value}))} /></label>
+              <label>原幣金額: <input type="number" value={form.originalAmount || ""} onChange={e => {
+      const newAmount = e.target.value;
+      setForm(f => {
+        let year = f.year;
+let quarter = f.quarter;
+if ((!year || !quarter) && Array.isArray(window.budgets)) {
+  const b = window.budgets.find(b => b.id == f.budgetId);
+  if (b?.startDay) {
+    year = new Date(b.startDay).getFullYear();
+    const m = new Date(b.startDay).getMonth() + 1;
+    quarter = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
+  }
+}
+const rate = getRateToUSD(window.rates || [], f.currency, year, quarter);
+        console.log("💱 原幣金額變動換算", { rate });
+        const usd = (!rate || isNaN(rate) || rate <= 0) ? newAmount : (Number(newAmount) * rate).toFixed(2);
+        return { ...f, originalAmount: newAmount, amount: usd };
+      });
+    }} /></label>
             </div>
             <div>
               <label>Apply Date: <input type="date" value={form.applyDate || ""} onChange={e => setForm(f => ({...f, applyDate: e.target.value}))} /></label>
@@ -945,12 +1572,223 @@
     }
 
     // ExpenseCMS 主體調整
-    function ExpenseCMS({ user, users, setUsers }) {
+    
+function handleImportExpenses(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(worksheet);
+    console.log("匯入資料：", json);
+    // 你可以依需求加入 setExpenses(prev => [...prev, ...json]) 或轉換格式後儲存
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+
+
+function handleCopyExpense(expense) {
+  const newExpense = {
+    ...expense,
+    id: Date.now(),
+    unitId: Date.now(), // or you can increment based on local state
+    applyDate: "", // 清空以避免日期衝突
+    invoiceDate: "",
+    paymentDate: "",
+    invoiceNumber: "",
+    mporId: "",
+    batchNumber: "",
+    iaFormNo: "",
+    status: "",
+    peNumbers: "",
+    peStatus: "",
+    paid: 0,
+    inProcess: 0,
+    appliedExpenses: 0,
+    balance: 0
+  };
+  setExpenses(prev => [...prev, newExpense]);
+}
+
+
+
+// ✅ 此函式已移至 ExpenseCMS 內部使用，以修正 setExpenses 未定義錯誤
+// function handleDeleteExpense(id) {
+//   if (window.confirm("確定要刪除這筆請款？")) {
+//     setExpenses(prev => prev.filter(e => e.id !== id));
+//   }
+// }
+
+
+function ExpenseCMS({ user, users, setUsers }) {
+
+  const handleDeleteEstimate = (id) => {
+    if (window.confirm("確定要刪除這筆預估？")) {
+      db.collection("estimates").doc(String(id)).delete();
+      setEstimates((prev) => prev.filter((e) => e.id !== id));
+    }
+  };
+
+  const handleSaveEstimate = (updated) => {
+    db.collection("estimates").doc(String(updated.id)).set(updated);
+    setEstimates((prev) =>
+      prev.map((e) => (e.id === updated.id ? { ...e, ...updated } : e))
+    );
+    setEditEstimate(null);
+  };
+
+  const [editEstimate, setEditEstimate] = useState(null);
+
+
+  const handleEditEstimate = (estimate) => {
+    setEditEstimate(estimate);
+  };
+
+
+  const handleDeleteRate = (year, quarter) => {
+    const match = rates.find(
+      (r) => String(r.year) === String(year) && r.quarter === quarter
+    );
+    if (match?.id) {
+      db.collection("rates").doc(String(match.id)).delete();
+    }
+
+    setRates((prev) =>
+      prev.filter((r) => !(String(r.year) === String(year) && r.quarter === quarter))
+    );
+  };
+
+
+  // --- Exchange Rate handler with Firebase ---
+  const handleSaveRate = (rateObj) => {
+    const ratesRef = db.collection("rates");
+    if (rateObj.id) {
+      ratesRef.doc(String(rateObj.id)).set(rateObj);
+    } else {
+      const id = Date.now();
+      ratesRef.doc(String(id)).set({ ...rateObj, id });
+    }
+
+    setRates((prev) => {
+      const idx = prev.findIndex(
+        (r) => String(r.year) === String(rateObj.year) && r.quarter === rateObj.quarter
+      );
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], ...rateObj };
+        return updated;
+      } else {
+        return [...prev, { ...rateObj, id: Date.now() }];
+      }
+    });
+  };
+
+  // --- Estimate handler with Firebase ---
+  const handleAddEstimate = (est) => {
+    const id = Date.now();
+    const withId = { ...est, id };
+    db.collection("estimates").doc(String(id)).set(withId);
+    setEstimates((prev) => [...prev, withId]);
+  };
+
+
+  // Firebase CRUD for expenses
+  function addExpenseToFirebase(expense) {
+    return db.collection("expenses").doc(String(expense.id)).set(expense);
+  }
+  function updateExpenseInFirebase(expense) {
+    return db.collection("expenses").doc(String(expense.id)).set(expense);
+  }
+  function deleteExpenseFromFirebase(id) {
+    return db.collection("expenses").doc(String(id)).delete();
+  }
+
+  // Firebase CRUD for rates
+  function addRateToFirebase(rate) {
+    return db.collection("rates").doc(String(rate.id)).set(rate);
+  }
+  function updateRateInFirebase(rate) {
+    return db.collection("rates").doc(String(rate.id)).set(rate);
+  }
+  function deleteRateFromFirebase(id) {
+    return db.collection("rates").doc(String(id)).delete();
+  }
+
+  // Firebase CRUD for estimates
+  function addEstimateToFirebase(estimate) {
+    return db.collection("estimates").doc(String(estimate.id)).set(estimate);
+  }
+  function updateEstimateInFirebase(estimate) {
+    return db.collection("estimates").doc(String(estimate.id)).set(estimate);
+  }
+  function deleteEstimateFromFirebase(id) {
+    return db.collection("estimates").doc(String(id)).delete();
+  }
+
+  // 編輯預算
+  function handleSaveBudgetEdit(updated) {
+    setBudgets(prev => prev.map(b => b.id === updated.id ? { ...b, ...updated } : b));
+    // 更新 Firebase
+    db.collection("budgets").doc(String(updated.id)).set(updated).catch(()=>{});
+  }
+
+      // 用本地儲存取代 useState
       const [budgets, setBudgets] = useState([]);
+
+// ✅ 修正 handleDeleteExpense 放在正確的作用域
+function handleDeleteExpense(id) {
+  if (window.confirm("確定要刪除這筆請款？")) {
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    deleteExpenseFromFirebase(id);
+  }
+}
+
+
+useEffect(() => {
+  db.collection("budgets").get().then(snapshot => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setBudgets(data);
+  });
+}, [])
+
+
+// Auto-load expenses, rates, estimates from Firebase
+useEffect(() => {
+  db.collection("expenses").get().then(snapshot => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setExpenses(data);
+  });
+}, []);
+
+useEffect(() => {
+  db.collection("rates").get().then(snapshot => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setRates(data);
+  });
+}, []);
+
+useEffect(() => {
+  db.collection("estimates").get().then(snapshot => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setEstimates(data);
+  });
+}, []);
+;
+
+function saveBudgetToFirebase(budget) {
+  db.collection("budgets").add(budget).then(docRef => {
+    console.log("儲存成功：", docRef.id);
+  });
+}
+
       const [expenses, setExpenses] = useState([]);
-      const [mainTab, setMainTab] = useState("budget");
-      // 匯率資料
       const [rates, setRates] = useState([]);
+      const [mainTab, setMainTab] = useState("budget");
       const [budgetTab, setBudgetTab] = useState("dashboard");
       const [expenseTab, setExpenseTab] = useState("dashboard");
       const [showBudgetModal, setShowBudgetModal] = useState(false);
@@ -988,13 +1826,16 @@
       ])).sort();
 
       function handleAddBudget(data) {
+  saveBudgetToFirebase(data);
         setBudgets(prev => [...prev, { id: Date.now(), ...data }]);
         setShowBudgetModal(false);
         setBudgetTab("dashboard");
       }
 
       function handleAddExpense(data) {
-        setExpenses(prev => [...prev, { id: Date.now(), ...data }]);
+        const newData = { id: Date.now(), ...data };
+        setExpenses(prev => [...prev, newData]);
+        addExpenseToFirebase(newData);
         setShowExpenseModal(false);
         setExpenseTab("dashboard");
       }
@@ -1018,6 +1859,7 @@
         setExpenses(prev =>
           prev.map(e => e.id === newExpense.id ? { ...e, ...newExpense } : e)
         );
+        updateExpenseInFirebase(newExpense);
         setEditExpense(null);
       }
 
@@ -1147,11 +1989,30 @@
             inProcess = Number(e.amount) || 0;
           } else if (e.status === "Closed") {
             paid = Number(e.amount) || 0;
-            appliedExpenses = Number(e.amount) || 0;
+            // appliedExpenses = Number(e.amount) || 0; // <-- 原本直接用 amount (USD)
           }
-          // 6. Balance = Budget - Applied Expenses
+
+          // --- 修正 appliedExpenses 以原始幣別轉 USD ---
+          // 找出所有該 budgetId、狀態為 Closed 的請款，將其原幣金額轉 USD 加總
+          let appliedExpensesUSD = 0;
+          if (budget.id) {
+            appliedExpensesUSD = expenses
+              .filter(x => x.budgetId === budget.id && x.status === "Closed")
+              .reduce((sum, x) => {
+                // 取得匯率
+                const year = x.year || budget.year;
+                const quarter = x.quarter || getQuarterFromDate(budget.startDay);
+                const rate = getRateToUSD(window.rates || [], x.currency || "USD", year, quarter);
+                const orig = Number(x.originalAmount || x.amount || 0);
+                // 若原始金額不存在，則直接用 amount (已為 USD)
+                return sum + (x.currency === "USD" ? orig : orig * rate);
+              }, 0);
+          }
+
+          // 6. Balance = Budget(USD) - Applied Expenses(USD)
           const budgetAmt = budget.amount || 0;
-          const balance = budgetAmt - appliedExpenses;
+          const balance = budgetAmt - appliedExpensesUSD;
+
           return {
             ...e,
             item: budget.item || "",
@@ -1165,8 +2026,8 @@
             peStatus,
             inProcess,
             paid,
-            appliedExpenses,
-            balance
+            appliedExpenses: appliedExpensesUSD, // <-- 以 USD 顯示
+            balance // <-- 以 USD 顯示
           };
         })
       );
@@ -1193,8 +2054,8 @@
       }
 
       return (
-        <div style={{ maxWidth: 1500, margin: "0 auto", fontFamily: "sans-serif" }}>
-          <h1>費用管理CMS</h1>
+        <div style={{ maxWidth: 1800, margin: "0 auto", fontFamily: "sans-serif" }}>
+          <h1>AOCC 費用管理 CMS</h1>
           <div style={{ marginBottom: 16 }}>登入使用者：<b>{user.name}</b> ({roleLabel(user.role)})</div>
           <div style={{ marginBottom: 16 }}>
             {isAdmin && (
@@ -1222,6 +2083,8 @@
                 <button onClick={() => setBudgetTab("dashboard")}>Dashboard</button>
                 {canEditBudget && <button onClick={() => setShowBudgetModal(true)}>Add</button>}
               </div>
+              {/* 新增間距 */}
+              <div style={{ height: 16 }}></div>
               {budgetTab === "dashboard" && (
                 <div>
                   <h3>預算 Dashboard</h3>
@@ -1229,6 +2092,8 @@
                     data={filteredBudgets}
                     users={users}
                     onExport={exportToExcel}
+                    onDelete={handleDeleteBudget}
+                    onEdit={handleSaveBudgetEdit}
                   />
                 </div>
               )}
@@ -1253,6 +2118,8 @@
                 <button onClick={() => setExpenseTab("dashboard")}>Dashboard</button>
                 {canEditExpense && <button onClick={() => setShowExpenseModal(true)}>Add</button>}
               </div>
+              {/* 新增間距 */}
+              <div style={{ height: 16 }}></div>
               {expenseTab === "dashboard" && (
                 <div>
                   <h3>請款 Dashboard</h3>
@@ -1262,6 +2129,8 @@
                     budgets={budgets}
                     onExport={exportToExcel}
                     onEdit={handleEditExpense}
+                    handleImportExpenses={handleImportExpenses}
+                    handleDeleteExpense={handleDeleteExpense}
                   />
                   <ExpenseEditForm
                     open={!!editExpense}
@@ -1291,7 +2160,7 @@
             </section>
           )}
           {mainTab === "exchange" && (
-            <ExchangeRateTab user={user} rates={rates} setRates={setRates} />
+            <ExchangeRateTab user={user} rates={rates} setRates={handleSaveRate} handleDeleteRate={handleDeleteRate} />
           )}
           {mainTab === "estimate" && (
             <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
@@ -1312,7 +2181,16 @@
                 <button type="button" onClick={() => setEstimateFilter({ currency: "", applicant: "" })}>Reset</button>
               </div>
               {/* 2. 預估區塊預設顯示 Dashboard */}
-              <EstimateTab user={user} users={users} estimates={filteredEstimates} setEstimates={setEstimates} defaultTab="dashboard" />
+              <EstimateTab
+                user={user}
+                users={users}
+                estimates={filteredEstimates}
+                setEstimates={setEstimates}
+                onAdd={handleAddEstimate}
+                onEdit={handleEditEstimate}
+                onDelete={handleDeleteEstimate}
+                defaultTab="dashboard"
+              />
             </section>
           )}
         </div>
@@ -1332,7 +2210,7 @@
     }
 
     // 預估區塊 EstimateTab
-    function EstimateTab({ user, users, estimates, setEstimates, defaultTab }) {
+    function EstimateTab({ user, users, estimates, setEstimates, onAdd, onEdit, onDelete, defaultTab }) {
       const [editIdx, setEditIdx] = React.useState(null);
       const [editForm, setEditForm] = React.useState(null);
       const [tab, setTab] = React.useState("dashboard");
@@ -1342,7 +2220,7 @@
         e.preventDefault();
         const form = Object.fromEntries(new FormData(e.target));
         form.eshop = e.target.eshop.checked ? "是" : "否";
-        setEstimates(prev => [...prev, { ...form }]);
+        onAdd(form);
         setShowAddModal(false);
         e.target.reset();
       }
@@ -1356,14 +2234,15 @@
         e.preventDefault();
         const form = Object.fromEntries(new FormData(e.target));
         form.eshop = e.target.eshop && e.target.eshop.checked ? "是" : "否";
-        setEstimates(prev => prev.map((item, i) => i === editIdx ? { ...item, ...form } : item));
+        form.id = editForm.id;
+        onEdit(form);
         setEditIdx(null);
         setEditForm(null);
       }
 
       function handleDelete(idx) {
         if (window.confirm("確定刪除？")) {
-          setEstimates(prev => prev.filter((_, i) => i !== idx));
+          onDelete(estimates[idx].id);
         }
       }
 
@@ -1547,19 +2426,106 @@
       );
     }
 
+    // 匯率查詢函式：根據 rates, 幣別, 年, 季度，回傳對USD的匯率
+    function getRateToUSD(rates, currency, year, quarter) {
+      // 預設 USD 匯率為 1
+      if (currency === "USD") return 1;
+      // 找到對應的匯率資料
+      const found = rates.find(r => String(r.year) === String(year) && r.quarter === quarter);
+      if (found && found[currency]) {
+        const rate = parseFloat(found[currency]);
+        if (!isNaN(rate) && rate > 0) return rate;
+      }
+      // 若找不到，回傳 1，或可視需求回傳 null/throw error
+      return 1;
+    }
+
     function App() {
       const [users, setUsers] = useState([
         { id: 1, name: "王小明", role: "ADMIN", password: "admin123" },
         { id: 2, name: "陳美麗", role: "MANAGER", password: "manager123" },
         { id: 3, name: "李大仁", role: "USER", password: "user123" }
       ]);
-      const [loginUser, setLoginUser] = useState(null);
+      // 1. 初始化時自動檢查 localStorage
+      const [loginUser, setLoginUser] = useState(() => {
+        try {
+          const saved = window.localStorage.getItem("loginUser");
+          return saved ? JSON.parse(saved) : null;
+        } catch {
+          return null;
+        }
+      });
+
+      // 2. 登入時寫入 localStorage
+      function handleLogin(user) {
+        setLoginUser(user);
+        window.localStorage.setItem("loginUser", JSON.stringify(user));
+      }
+      // 3. 登出時清除 localStorage
+      function handleLogout() {
+        setLoginUser(null);
+        window.localStorage.removeItem("loginUser");
+      }
+
       return loginUser
-        ? <ExpenseCMS user={loginUser} users={users} setUsers={setUsers} />
-        : <Login users={users} onLogin={setLoginUser} />;
+        ? <div>
+            {/* 右上角登出按鈕 */}
+            <div style={{
+              position: "fixed", top: 12, right: 24, zIndex: 999,
+              background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px #0001", padding: "6px 16px"
+            }}>
+              <span style={{marginRight: 12}}>Hi, <b>{loginUser.name}</b></span>
+              <button onClick={handleLogout}>登出</button>
+            </div>
+            <ExpenseCMS user={loginUser} users={users} setUsers={setUsers} />
+          </div>
+        : <Login users={users} onLogin={handleLogin} />;
     }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+    // 在最前面(React 相關宣告後)補上 useLocalStorageState 實作
+    function useLocalStorageState(key, defaultValue) {
+      const [state, setState] = React.useState(() => {
+        try {
+          const saved = window.localStorage.getItem(key);
+          return saved ? JSON.parse(saved) : defaultValue;
+        } catch {
+          return defaultValue;
+        }
+      });
+      React.useEffect(() => {
+        window.localStorage.setItem(key, JSON.stringify(state));
+      }, [key, state]);
+      return [state, setState];
+    }
   </script>
-</body>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const currencySelect = document.querySelector('select[name="currency"]');
+  const originalAmountInput = document.querySelector('input[name="originalAmount"]');
+  const usdAmountInput = document.querySelector('input[name="usdAmount"]');
+
+  const updateUSD = () => {
+    const currency = currencySelect.value;
+    const originalAmount = parseFloat(originalAmountInput.value);
+    const rate = 0.030451;
+
+    if (!isNaN(originalAmount)) {
+      if (currency === "TWD") {
+        usdAmountInput.value = (originalAmount * rate).toFixed(2);
+      } else {
+        usdAmountInput.value = originalAmount.toFixed(2);
+      }
+    } else {
+      usdAmountInput.value = "";
+    }
+  };
+
+  if (currencySelect && originalAmountInput && usdAmountInput) {
+    currencySelect.addEventListener("change", updateUSD);
+    originalAmountInput.addEventListener("input", updateUSD);
+  }
+});
+</script></body>
 </html>
