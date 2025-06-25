@@ -2101,8 +2101,8 @@ function saveBudgetToFirebase(budget) {
               {/* Filter 放在區塊內 */}
               <FilterBar filter={budgetFilter} setFilter={setBudgetFilter} users={users} onReset={() => setBudgetFilter({ department: "", team: "", type: "", pic: "", year: "", quarter: "" })} years={years} />
               <div>
-                <button onClick={() => setBudgetTab("dashboard")}>Dashboard</button>
-                {canEditBudget && <button onClick={() => setShowBudgetModal(true)}>Add</button>}
+                
+                {canEditBudget && <button onClick={() => setShowBudgetModal(true)}>新增預算</button>}
               </div>
               {/* 新增間距 */}
               <div style={{ height: 16 }}></div>
@@ -2137,8 +2137,8 @@ function saveBudgetToFirebase(budget) {
               {/* Filter 放在區塊內 */}
               <FilterBar filter={expenseFilter} setFilter={setExpenseFilter} users={users} onReset={() => setExpenseFilter({ department: "", team: "", type: "", pic: "", year: "", quarter: "" })} years={years} />
               <div>
-                <button onClick={() => setExpenseTab("dashboard")}>Dashboard</button>
-                {canEditExpense && <button onClick={() => setShowExpenseModal(true)}>Add</button>}
+                
+                {canEditExpense && <button onClick={() => setShowExpenseModal(true)}>新增請款</button>}
               </div>
               {/* 新增間距 */}
               <div style={{ height: 16 }}></div>
