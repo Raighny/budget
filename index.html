@@ -94,7 +94,7 @@ function calculateBalance(budget, appliedExpenses) {
     th, td {
       padding: 8px 10px;
       text-align: left;
-      border: none; /* 移除黑色外框 */
+      border: none; /* 秮除黑色外框 */
     }
     table, th, td {
       font-size: 80%;
@@ -805,6 +805,7 @@ function handleDeleteBudget(id) {
       const [amount, setAmount] = useState("");
       const teams = department ? DEPT_TEAM_MAP[department] : [];
       useEffect(() => { setTeam(""); }, [department]);
+
       if (!canEdit) return <div style={{color:"#d00"}}>您沒有新增預算權限</div>;
       return (
         <form onSubmit={e => {
@@ -812,8 +813,8 @@ function handleDeleteBudget(id) {
           if (!department || !team || !item || !type || !pics.length || !startDay || !endDay || !amount) return;
           const year = startDay ? new Date(startDay).getFullYear() : "";
           onAdd({
-            department, team, item, description, type, pics, // <-- 多個 PIC
-            year, startDay, endDay, amount: Number(amount)
+            department, team, item, description, type, pics,
+            year, startDay, endDay, amount: Number(amount) // 直接以 USD 儲存
           });
           setDepartment(""); setTeam(""); setItem(""); setDescription(""); setType(""); setPics([user.id]);
           setStartDay(""); setEndDay(""); setAmount("");
@@ -834,10 +835,9 @@ function handleDeleteBudget(id) {
             </label>
           </div>
           <div>
-            
-  <label>Item: 
-    <input value={item} onChange={e => setItem(e.target.value)} />
-  </label>
+            <label>Item: 
+              <input value={item} onChange={e => setItem(e.target.value)} />
+            </label>
             <label>Description: <input value={description} onChange={e => setDescription(e.target.value)} /></label>
           </div>
           <div>
@@ -869,14 +869,9 @@ function handleDeleteBudget(id) {
             <label>End Day:
               <input type="date" value={endDay} onChange={e => setEndDay(e.target.value)} />
             </label>
-            <label>Amount (原幣): 
-  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-</label>
-
-<label>Amount (USD 換算): 
-  <input type="number" value={amountUSD} readOnly />
-</label>
-
+            <label>Amount (USD): 
+              <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+            </label>
           </div>
           <button type="submit">新增預算</button>
         </form>
@@ -1183,7 +1178,6 @@ function handleDeleteBudget(id) {
       const [invoiceDate, setInvoiceDate] = useState("");
       const [invoiceNumber, setInvoiceNumber] = useState("");
       const [currency, setCurrency] = useState("USD");
-      const [amountUSD, setAmountUSD] = useState("");
       const teams = department ? DEPT_TEAM_MAP[department] : [];
       // 累積ID
       const nextNo = (expenses && expenses.length > 0)
@@ -1214,6 +1208,23 @@ function handleDeleteBudget(id) {
           setType("");
         }
       }, [budgetId, budgets]);
+
+      // 自動計算 USD 金額
+      useEffect(() => {
+        // 只有當原幣金額、幣別、年、季有值時才自動計算
+        if (amount && currency && year && quarter) {
+          // 取得匯率
+          const rate = getRateToUSD(rates, currency, year, quarter);
+          // 只有當匯率大於0且不是USD時才換算
+          if (rate && !isNaN(rate) && rate > 0) {
+            setAmountUSD((Number(amount) * rate).toFixed(2));
+          } else {
+            setAmountUSD(amount);
+          }
+        } else {
+          setAmountUSD("");
+        }
+      }, [amount, currency, year, quarter, rates]);
 
       if (!canEdit) return <div style={{color:"#d00"}}>您沒有新增請款權限</div>;
       return (
@@ -1740,7 +1751,17 @@ function ExpenseCMS({ user, users, setUsers }) {
       // 用本地儲存取代 useState
       const [budgets, setBudgets] = useState([]);
 
-// ✅ 修正 handleDeleteExpense 放在正確的作用域
+      // 修正 handleAddBudget，確保 id 唯一且與 Firebase 同步
+      function handleAddBudget(data) {
+        const id = Date.now();
+        const budgetData = { id, ...data };
+        saveBudgetToFirebase(budgetData);
+        setBudgets(prev => [...prev, budgetData]);
+        setShowBudgetModal(false);
+        setBudgetTab("dashboard");
+      }
+
+      // ✅ 修正 handleDeleteExpense 放在正確的作用域
 function handleDeleteExpense(id) {
   if (window.confirm("確定要刪除這筆請款？")) {
     setExpenses(prev => prev.filter(e => e.id !== id));
@@ -1826,7 +1847,7 @@ function saveBudgetToFirebase(budget) {
       ])).sort();
 
       function handleAddBudget(data) {
-  saveBudgetToFirebase(data);
+        saveBudgetToFirebase(data);
         setBudgets(prev => [...prev, { id: Date.now(), ...data }]);
         setShowBudgetModal(false);
         setBudgetTab("dashboard");
@@ -2105,6 +2126,7 @@ function saveBudgetToFirebase(budget) {
                   onAdd={handleAddBudget}
                   onSuccess={() => {}}
                   canEdit={canEditBudget}
+                  rates={rates}
                 />
                 <div style={{color: "#0a0", marginTop: 8}}>新增完成會自動回到Dashboard</div>
               </Modal>
