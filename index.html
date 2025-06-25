@@ -863,17 +863,17 @@ function handleDeleteBudget(id) {
             </label>
           </div>
           <div>
-            <label>Start Day:
+            <label>Start Date:
               <input type="date" value={startDay} onChange={e => setStartDay(e.target.value)} />
             </label>
-            <label>End Day:
+            <label>End Date:
               <input type="date" value={endDay} onChange={e => setEndDay(e.target.value)} />
             </label>
             <label>Amount (USD): 
               <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
             </label>
           </div>
-          <button type="submit">新增預算</button>
+          <button type="submit">送出預算</button>
         </form>
       );
     }
@@ -1408,10 +1408,10 @@ function handleDeleteBudget(id) {
             </label>
           </div>
           <div>
-            <label>Start Day:
+            <label>Start Date:
               <input type="date" value={form.startDay || ""} onChange={e => setForm(f => ({ ...f, startDay: e.target.value }))} />
             </label>
-            <label>End Day:
+            <label>End Date:
               <input type="date" value={form.endDay || ""} onChange={e => setForm(f => ({ ...f, endDay: e.target.value }))} />
             </label>
             <label>Amount: <input type="number" value={form.amount || ""} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} /></label>
