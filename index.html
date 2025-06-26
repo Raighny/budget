@@ -1046,10 +1046,10 @@ function handleDeleteBudget(id) {
         { title: "原幣金額", dataIndex: "originalAmount" },
         { title: "Payment Date", dataIndex: "paymentDate" },
         { title: "Status", dataIndex: "status" },
-        { title: "Applied Expenses", dataIndex: "appliedExpenses" },
-        { title: "In Process", dataIndex: "inProcess" },
-        { title: "Paid", dataIndex: "paid" },
-        { title: "Balance", dataIndex: "balance" }
+        { title: "Applied Expenses(USD)", dataIndex: "appliedExpenses" },
+        { title: "In Process(USD)", dataIndex: "inProcess" },
+        { title: "Paid(USD)", dataIndex: "paid" },
+        { title: "Balance(USD)", dataIndex: "balance" }
       ];
       // 排序函式
       function handleSort(key) {
@@ -1209,22 +1209,6 @@ function handleDeleteBudget(id) {
         }
       }, [budgetId, budgets]);
 
-      // 自動計算 USD 金額
-      useEffect(() => {
-        // 只有當原幣金額、幣別、年、季有值時才自動計算
-        if (amount && currency && year && quarter) {
-          // 取得匯率
-          const rate = getRateToUSD(rates, currency, year, quarter);
-          // 只有當匯率大於0且不是USD時才換算
-          if (rate && !isNaN(rate) && rate > 0) {
-            setAmountUSD((Number(amount) * rate).toFixed(2));
-          } else {
-            setAmountUSD(amount);
-          }
-        } else {
-          setAmountUSD("");
-        }
-      }, [amount, currency, year, quarter, rates]);
 
       if (!canEdit) return <div style={{color:"#d00"}}>您沒有新增請款權限</div>;
       return (
@@ -1343,7 +1327,7 @@ function handleDeleteBudget(id) {
               <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
             </label>
           </div>
-          <button type="submit">新增請款</button>
+          <button type="submit">送出款項</button>
         </form>
       );
     }
@@ -1662,6 +1646,9 @@ function ExpenseCMS({ user, users, setUsers }) {
 
 
   const handleDeleteRate = (year, quarter) => {
+
+
+
     const match = rates.find(
       (r) => String(r.year) === String(year) && r.quarter === quarter
     );
@@ -1895,7 +1882,15 @@ function saveBudgetToFirebase(budget) {
       // 修正：宣告各區塊 filter 狀態
       const [budgetFilter, setBudgetFilter] = useState({ department: "", team: "", type: "", pic: "", year: "", quarter: "" });
       const [expenseFilter, setExpenseFilter] = useState({ department: "", team: "", type: "", pic: "", year: "", quarter: "" });
-      const [estimateFilter, setEstimateFilter] = useState({ currency: "", applicant: "" });
+      // 新增 estimateFilter 欄位
+      const [estimateFilter, setEstimateFilter] = useState({
+        currency: "",
+        applicant: "",
+        deptCode: "",
+        coaCode: "",
+        eshop: "",
+        description: ""
+      });
 
       // FilterBar 拆分為可重用的 FilterBar
       function FilterBar({ filter, setFilter, users, onReset, years }) {
@@ -1975,7 +1970,12 @@ function saveBudgetToFirebase(budget) {
       function filterEstimateData(data) {
         return data.filter(e =>
           (!estimateFilter.currency || e.currency === estimateFilter.currency) &&
-          (!estimateFilter.applicant || e.applicant === estimateFilter.applicant)
+          (!estimateFilter.applicant || e.applicant === estimateFilter.applicant) &&
+          (!estimateFilter.deptCode || e.deptCode === estimateFilter.deptCode) &&
+          (!estimateFilter.coaCode || e.coaCode === estimateFilter.coaCode) &&
+          (!estimateFilter.eshop || (estimateFilter.eshop === "是" ? e.eshop === "是" : e.eshop !== "是")) &&
+          (!estimateFilter.description ||
+            (e.description && e.description.toLowerCase().includes(estimateFilter.description.toLowerCase())))
         );
       }
 
@@ -2200,7 +2200,34 @@ function saveBudgetToFirebase(budget) {
                 <label>Applicant:
                   <input value={estimateFilter.applicant} onChange={e => setEstimateFilter(f => ({ ...f, applicant: e.target.value }))} />
                 </label>
-                <button type="button" onClick={() => setEstimateFilter({ currency: "", applicant: "" })}>Reset</button>
+                {/* 新增 Dept code. */}
+                <label>Dept code.:
+                  <input value={estimateFilter.deptCode} onChange={e => setEstimateFilter(f => ({ ...f, deptCode: e.target.value }))} />
+                </label>
+                {/* 新增 COA Code */}
+                <label>COA Code:
+                  <input value={estimateFilter.coaCode} onChange={e => setEstimateFilter(f => ({ ...f, coaCode: e.target.value }))} />
+                </label>
+                {/* 新增 eShop */}
+                <label>eShop:
+                  <select value={estimateFilter.eshop} onChange={e => setEstimateFilter(f => ({ ...f, eshop: e.target.value }))}>
+                    <option value="">全部</option>
+                    <option value="是">是</option>
+                    <option value="否">否</option>
+                  </select>
+                </label>
+                {/* 新增 Description 模糊搜尋 */}
+                <label>Description:
+                  <input value={estimateFilter.description} onChange={e => setEstimateFilter(f => ({ ...f, description: e.target.value }))} placeholder="關鍵字搜尋" />
+                </label>
+                <button type="button" onClick={() => setEstimateFilter({
+                  currency: "",
+                  applicant: "",
+                  deptCode: "",
+                  coaCode: "",
+                  eshop: "",
+                  description: ""
+                })}>Reset</button>
               </div>
               {/* 2. 預估區塊預設顯示 Dashboard */}
               <EstimateTab
@@ -2238,6 +2265,24 @@ function saveBudgetToFirebase(budget) {
       const [tab, setTab] = React.useState("dashboard");
       const [showAddModal, setShowAddModal] = React.useState(false);
 
+      // 匯出欄位定義
+      const columns = [
+        { title: "Applicant", dataIndex: "applicant" },
+        { title: "Dept code.", dataIndex: "deptCode" },
+        { title: "COA Code", dataIndex: "coaCode" },
+        { title: "Billing Company", dataIndex: "billingCompany" },
+        { title: "eShop", dataIndex: "eshop" },
+        { title: "Vendor Name", dataIndex: "vendorName" },
+        { title: "Invoice No.", dataIndex: "invoiceNo" },
+        { title: "Currency", dataIndex: "currency" },
+        { title: "Amt", dataIndex: "amt" },
+        { title: "Start date", dataIndex: "startDate" },
+        { title: "End date", dataIndex: "endDate" },
+        { title: "Description", dataIndex: "description" },
+        { title: "PE 單號", dataIndex: "peNo" },
+        { title: "PE Status", dataIndex: "peStatus" }
+      ];
+
       function handleAdd(e) {
         e.preventDefault();
         const form = Object.fromEntries(new FormData(e.target));
@@ -2271,6 +2316,12 @@ function saveBudgetToFirebase(budget) {
       return (
         <section style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+            {/* 匯出 Excel 按鈕 */}
+            <button
+              className="export-btn"
+              style={{ marginRight: 8 }}
+              onClick={() => exportToExcel(estimates, columns, "estimate_dashboard.xlsx")}
+            >匯出 Excel</button>
             <button
               className="inner-tab-btn"
               style={{
